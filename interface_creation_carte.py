@@ -22,7 +22,7 @@ if 'col_config' not in st.session_state:
 if 'last_uploaded_file_name' not in st.session_state:
     st.session_state.last_uploaded_file_name = None
 
-st.title("📍 Map Clustering Tool")
+st.title("📍 Générateur de Carte Clustering")
 st.write("Uploadez un fichier CSV ou Excel pour regrouper vos points par zones.")
 
 # 1. Upload du fichier
