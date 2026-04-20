@@ -94,6 +94,9 @@ if uploaded_file is not None:
                     # Fonction utilitaire pour préparer l'adresse avant le géocodage (version robuste)
                     def prepare_address_for_geocoding(address):
                         address_str = str(address).strip()
+                        if address_str.isdigit() and len(address_str) == 4:
+                            address_str = '0' + address_str
+                            st.info(f"Correction : '{address}' a été transformé en '{address_str}' pour le géocodage.")
                         # Vérifie si l'adresse est juste un nombre et ne ressemble pas à un CP français (5 chiffres)
                         if address_str.isdigit() and len(address_str) != 5:
                             st.warning(f"Adresse '{address_str}' ne semble pas être valide. Le géocodage pourrait échouer.")
