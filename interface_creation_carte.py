@@ -237,6 +237,12 @@ if st.session_state.df_geocoded is not None:
                 kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10) # Ajout de n_init
                 df_ready['cluster'] = kmeans.fit_predict(df_ready[['lat', 'lon']])
 
+                grouped_points = df_ready.groupby(['lat', 'lon', 'cluster']).agg(
+                    names=(col_name, lambda x: '<br>'.join(x.astype(str))), # Concatène les noms
+                    total_value=(col_value, 'sum'), # Somme des valeurs
+                    address=(col_address, 'first') # Prend la première adresse (elles sont toutes les mêmes)
+                ).reset_index()
+
                 # --- ÉTAPE : Calcul des totaux et centroïdes par cluster ---
                 cluster_summary = df_ready.groupby('cluster').agg(
                     lat_centroid=('lat', 'mean'),
@@ -253,7 +259,7 @@ if st.session_state.df_geocoded is not None:
                           'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black', 'white', 'lightgray', 'darkgray']
 
                 # Calcul du nombre total d'éléments à afficher pour la barre de progression
-                total_items_on_map = len(df_ready) # Points individuels
+                total_items_on_map = len(grouped_points) # Points individuels
                 if st.session_state.show_centroids:
                     total_items_on_map += len(cluster_summary) # Centroïdes
                 if st.session_state.manual_points_df is not None:
@@ -263,20 +269,20 @@ if st.session_state.df_geocoded is not None:
                 map_progress_bar = st.progress(0)
 
                 # --- Ajout des marqueurs pour chaque point clusterisé ---
-                for idx, row in df_ready.iterrows(): 
-                    cluster_id = row['cluster']
+                for idx, row_grouped  in grouped_points.iterrows(): 
+                    cluster_id = row_grouped['cluster']
 
-                    address_display = str(row[col_address]) # Gérer le cas où col_address pourrait être un nombre ou un objet non-string
+                    address_display = str(row_grouped['address']) # Gérer le cas où col_address pourrait être un nombre ou un objet non-string
 
                     popup_text = f"""
-                    <b>Nom:</b> {row[col_name]}<br>
+                    <b>Nom:</b> {row_grouped['names']}<br>
                     <b>Adresse:</b> {address_display}<br>
                     <b>Cluster:</b> {cluster_id}<br>
-                    <b>Valeur ({col_value}):</b> {row[col_value]}
+                    <b>Valeur ({col_value}):</b> {row_grouped['total_value']}
                     """
 
                     folium.Marker(
-                        location=[row['lat'], row['lon']],
+                        location=[row_grouped['lat'], row_grouped['lon']],
                         popup=folium.Popup(popup_text, max_width=300),
                         icon=folium.Icon(color=colors[cluster_id % len(colors)], icon='info-sign')
                     ).add_to(m)
