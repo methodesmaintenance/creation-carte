@@ -82,7 +82,7 @@ if uploaded_file is not None:
             # Stocker la configuration pour la réutilisation
             st.session_state.col_config = {'name': col_name, 'address': col_address, 'value': col_value}
 
-            st.info(f"💡 **Note sur l'adresse :** Pour géocoder (= calculer longitude et latitude), il est plus fable d'utiliser seulement le code postal")
+            st.info(f"💡 **Note sur l'adresse :** Pour géocoder ( = calculer longitude et latitude), il est plus fiable d'utiliser seulement le code postal")
 
             # Bouton de géocodage
             if st.sidebar.button("⚙️ Lancer le Géocodage"):
