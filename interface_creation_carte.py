@@ -21,6 +21,10 @@ if 'col_config' not in st.session_state:
     st.session_state.col_config = {}
 if 'last_uploaded_file_name' not in st.session_state:
     st.session_state.last_uploaded_file_name = None
+if 'show_centroids' not in st.session_state:
+    st.session_state.show_centroids = True # Par défaut, les centroïdes sont affichés
+if 'manual_points_df' not in st.session_state:
+    st.session_state.manual_points_df = None
 
 st.title("📍 Générateur de Carte Clustering")
 st.write("Uploadez un fichier CSV ou Excel pour regrouper vos points par zones.")
@@ -36,6 +40,7 @@ if uploaded_file is not None:
         # Réinitialiser l'état quand un nouveau fichier est chargé
         st.session_state.df_geocoded = None
         st.session_state.col_config = {} # Réinitialise aussi la config des colonnes
+        st.session_state.manual_points_df = None # Réinitialiser les points manuelles
         
         # Lecture des données du nouveau fichier
         try:
@@ -82,7 +87,7 @@ if uploaded_file is not None:
             # Stocker la configuration pour la réutilisation
             st.session_state.col_config = {'name': col_name, 'address': col_address, 'value': col_value}
 
-            st.info(f"💡 **Note sur l'adresse :** Pour géocoder ( = calculer longitude et latitude), il est plus fiable d'utiliser seulement le code postal")
+            st.info(f"💡 **Note sur l'adresse :** Pour géocoder (= calculer longitude et latitude), il est plus fiable d'utiliser seulement le code postal.")
 
             # Bouton de géocodage
             if st.sidebar.button("⚙️ Lancer le Géocodage"):
@@ -95,11 +100,10 @@ if uploaded_file is not None:
                     def prepare_address_for_geocoding(address):
                         address_str = str(address).strip()
                         if address_str.isdigit() and len(address_str) == 4:
-                            address_str = '0' + address_str
-                            st.info(f"Correction : '{address}' a été transformé en '{address_str}' pour le géocodage.")
+                            address_str = '0' + address_str # Pour les CP à 4 chiffres (ex: Outre-mer)
                         # Vérifie si l'adresse est juste un nombre et ne ressemble pas à un CP français (5 chiffres)
                         if address_str.isdigit() and len(address_str) != 5:
-                            st.warning(f"Adresse '{address_str}' ne semble pas être valide. Le géocodage pourrait échouer.")
+                            st.warning(f"Adresse '{address_str}' ne semble pas être un code postal valide. Le géocodage pourrait échouer.")
                             return address_str # Ne pas ajouter "France" à un nombre ambigu
                         
                         lower_address = address_str.lower()
@@ -175,6 +179,54 @@ if st.session_state.df_geocoded is not None:
 
     n_clusters = st.sidebar.slider("Nombre de clusters (K)", 2, 20, 5)
 
+    # Nouvelle option : Afficher les centroïdes
+    st.session_state.show_centroids = st.sidebar.checkbox("Afficher les centroïdes des clusters", st.session_state.show_centroids)
+
+
+    # Nouvelle section : Ajouter des points (points manuels)
+    st.sidebar.markdown("---")
+    st.sidebar.header("➕ Ajouter des points")
+    st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude, un point par ligne. Exemple:")
+    st.sidebar.code("Agence Jonage,45.777863,5.034605")
+    
+    manual_points_input = st.sidebar.text_area(
+        "Saisissez vos points ici:",
+        key="manual_points_input" # Ajout d'une clé unique
+    )
+
+    if st.sidebar.button("➕ Ajouter ces points à la carte"):
+        if manual_points_input:
+            try:
+                # Parse the input
+                data = [line.split(',') for line in manual_points_input.strip().split('\n') if line.strip()]
+                # Vérifier si toutes les lignes ont le bon nombre de colonnes
+                if any(len(row) != 3 for row in data):
+                    raise ValueError("Chaque ligne doit contenir 'Nom,Latitude,Longitude'.")
+                
+                manual_df = pd.DataFrame(data, columns=['Name', 'Latitude', 'Longitude'])
+                manual_df['Latitude'] = pd.to_numeric(manual_df['Latitude'])
+                manual_df['Longitude'] = pd.to_numeric(manual_df['Longitude'])
+                st.session_state.manual_points_df = manual_df
+                st.sidebar.success("Points ajoutés avec succès !")
+                st.rerun() # Re-exécuter pour mettre à jour l'affichage
+            except ValueError as ve:
+                st.sidebar.error(f"Erreur de format pour les points manuels : {ve}. Assurez-vous que le format est 'Nom,Latitude,Longitude' et que Lat/Lon sont numériques.")
+            except Exception as e:
+                st.sidebar.error(f"Erreur inattendue lors de l'ajout des points manuels : {e}.")
+        else:
+            st.session_state.manual_points_df = None
+            st.sidebar.info("Aucun points entré.")
+    
+    # Afficher et permettre de supprimer les points manuels déjà ajoutés
+    if st.session_state.manual_points_df is not None and not st.session_state.manual_points_df.empty:
+        st.sidebar.subheader("Points manuels actuels :")
+        st.sidebar.dataframe(st.session_state.manual_points_df)
+        if st.sidebar.button("❌ Supprimer les points manuels de la carte"):
+            st.session_state.manual_points_df = None
+            st.sidebar.info("Points supprimés.")
+            st.rerun() # Re-exécuter pour mettre à jour l'affichage
+
+    # Bouton de génération de carte
     if st.button("🗺️ Générer la carte des clusters"):
         if df_ready.empty:
             st.warning("Aucune donnée géocodée disponible pour générer la carte. Veuillez d'abord géocoder les adresses.")
@@ -182,7 +234,6 @@ if st.session_state.df_geocoded is not None:
             with st.spinner("Calcul des clusters et création de la carte en cours..."):
                 
                 # --- ÉTAPE : Clustering (K-Means) ---
-                # Utilise df_ready qui est le DataFrame géocodé
                 kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10) # Ajout de n_init
                 df_ready['cluster'] = kmeans.fit_predict(df_ready[['lat', 'lon']])
 
@@ -201,18 +252,21 @@ if st.session_state.df_geocoded is not None:
                 colors = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen',
                           'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black', 'white', 'lightgray', 'darkgray']
 
-                # Ajouter un gestionnaire de progression pour la création de la carte
-                map_progress_bar = st.progress(0)
+                # Calcul du nombre total d'éléments à afficher pour la barre de progression
+                total_items_on_map = len(df_ready) # Points individuels
+                if st.session_state.show_centroids:
+                    total_items_on_map += len(cluster_summary) # Centroïdes
+                if st.session_state.manual_points_df is not None:
+                    total_items_on_map += len(st.session_state.manual_points_df) # Points manuelles
                 
-                # --- Ajout des marqueurs pour chaque point ---
-                total_items_on_map = len(df_ready) + len(cluster_summary) # Points individuels + centroïdes
                 current_item_count = 0
+                map_progress_bar = st.progress(0)
 
+                # --- Ajout des marqueurs pour chaque point clusterisé ---
                 for idx, row in df_ready.iterrows(): 
                     cluster_id = row['cluster']
 
-                    # Gérer le cas où col_address pourrait être un nombre ou un objet non-string
-                    address_display = str(row[col_address])
+                    address_display = str(row[col_address]) # Gérer le cas où col_address pourrait être un nombre ou un objet non-string
 
                     popup_text = f"""
                     <b>Nom:</b> {row[col_name]}<br>
@@ -230,24 +284,35 @@ if st.session_state.df_geocoded is not None:
                     current_item_count += 1
                     map_progress_bar.progress(min(1.0, current_item_count / total_items_on_map))
 
-                # --- Ajout des marqueurs pour les centroïdes ---
-                for idx, row in cluster_summary.iterrows():
-                    cluster_id = row['cluster']
-                    
-                    # Popup pour le centroïde
-                    centroid_popup_text = f"""
-                    <b>Cluster {cluster_id} - CENTROÏDE</b><br>
-                    <b>Total Zone ({col_value}):</b> {row['total_value']}
-                    """
-                    
-                    folium.Marker(
-                        location=[row['lat_centroid'], row['lon_centroid']],
-                        popup=folium.Popup(centroid_popup_text, max_width=300),
-                        icon=folium.Icon(color='black', icon='star') # Marqueur noir en forme d'étoile pour les centroïdes
-                    ).add_to(m)
+                # --- Ajout des marqueurs pour les centroïdes (si activé) ---
+                if st.session_state.show_centroids:
+                    for idx, row in cluster_summary.iterrows():
+                        cluster_id = row['cluster']
+                        
+                        centroid_popup_text = f"""
+                        <b>Cluster {cluster_id} - CENTROÏDE</b><br>
+                        <b>Total Zone ({col_value}):</b> {row['total_value']}
+                        """
+                        
+                        folium.Marker(
+                            location=[row['lat_centroid'], row['lon_centroid']],
+                            popup=folium.Popup(centroid_popup_text, max_width=300),
+                            icon=folium.Icon(color='black', icon='star', prefix='fa') # Marqueur noir en forme d'étoile
+                        ).add_to(m)
 
-                    current_item_count += 1
-                    map_progress_bar.progress(min(1.0, current_item_count / total_items_on_map))
+                        current_item_count += 1
+                        map_progress_bar.progress(min(1.0, current_item_count / total_items_on_map))
+                
+                # --- Ajout des marqueurs pour les points manuels ---
+                if st.session_state.manual_points_df is not None:
+                    for idx, row in st.session_state.manual_points_df.iterrows():
+                        folium.Marker(
+                            location=[row['Latitude'], row['Longitude']],
+                            popup=folium.Popup(f"<b>Point Manuel:</b> {row['Name']}", max_width=200),
+                            icon=folium.Icon(color='black', icon='building', prefix='fa') # Icône de bâtiment orange
+                        ).add_to(m)
+                        current_item_count += 1
+                        map_progress_bar.progress(min(1.0, current_item_count / total_items_on_map))
 
                 
                 st.success("Carte générée !")
