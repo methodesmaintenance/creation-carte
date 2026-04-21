@@ -177,6 +177,17 @@ if st.session_state.df_geocoded is not None:
     col_value = params['value']
     col_address = params['address'] # Récupérer l'original col_address pour le popup si besoin
 
+    # --- NOUVEAU BOUTON DE TÉLÉCHARGEMENT POUR LES DONNÉES GÉOCODÉES ---
+    st.download_button(
+        label="⬇️ Télécharger les données géocodées (CSV)",
+        data=st.session_state.df_geocoded.to_csv(index=False).encode('utf-8'),
+        file_name="donnees_geocodes.csv",
+        mime="text/csv",
+        help="Télécharge le fichier CSV avec les colonnes de latitude et longitude ajoutées."
+    )
+    # --- FIN DU NOUVEAU BOUTON ---
+
+
     n_clusters = st.sidebar.slider("Nombre de clusters (K)", 2, 20, 5)
 
     # Nouvelle option : Afficher les centroïdes
@@ -334,4 +345,3 @@ if st.session_state.df_geocoded is not None:
                 file_name="ma_carte_clusters.html",
                 mime="text/html"
                 )
-
