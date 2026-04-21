@@ -159,7 +159,6 @@ if uploaded_file is not None:
                     
                     if geocoding_errors > 0:
                         st.warning(f"{geocoding_errors} adresses n'ont pas pu être géocodées. Elles ont été exclues du jeu de données.")
-                    st.success("Géocodage terminé ! " + (f"{len(df_temp)} adresses géocodées avec succès." if not df_temp.empty else ""))
 
                     st.rerun() # Re-exécuter l'application pour afficher le résultat du géocodage
 
@@ -169,7 +168,7 @@ else:
 
 # --- SECTION CLUSTERING ET CARTE ---
 if st.session_state.df_geocoded is not None:
-    st.sidebar.success("✅ Géocodage terminé ! Vous pouvez maintenant générer la carte.")
+    st.sidebar.success("✅ Géocodage terminé")
     
     df_ready = st.session_state.df_geocoded
     params = st.session_state.params
