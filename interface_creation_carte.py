@@ -196,10 +196,11 @@ if st.session_state.df_geocoded is not None:
     # Nouvelle section : Ajouter des points (points manuels)
     st.sidebar.markdown("---")
     st.sidebar.header("➕ Ajouter des points")
-    st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude, un point par ligne. Exemple:")
+    st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude")
+    st.sidebar.write("un point par ligne. Exemple:")
     st.sidebar.code("Agence Jonage,45.777863,5.034605")
     # Ajout de l'URL pour trouver les coordonnées
-    st.sidebar.markdown("Besoin de trouver des coordonnées GPS ? Vous pouvez utiliser [coordonnees-gps.fr](https://www.coordonnees-gps.fr/)")
+    st.sidebar.markdown("Besoin de trouver des coordonnées GPS ? [coordonnees-gps.fr](https://www.coordonnees-gps.fr/)")
     
     manual_points_input = st.sidebar.text_area(
         "Saisissez vos points ici:",
@@ -215,10 +216,19 @@ if st.session_state.df_geocoded is not None:
                 if any(len(row) != 3 for row in data):
                     raise ValueError("Chaque ligne doit contenir 'Nom,Latitude,Longitude'.")
                 
-                manual_df = pd.DataFrame(data, columns=['Name', 'Latitude', 'Longitude'])
-                manual_df['Latitude'] = pd.to_numeric(manual_df['Latitude'])
-                manual_df['Longitude'] = pd.to_numeric(manual_df['Longitude'])
-                st.session_state.manual_points_df = manual_df
+                new_manual_df = pd.DataFrame(data, columns=['Name', 'Latitude', 'Longitude'])
+                new_manual_df['Latitude'] = pd.to_numeric(new_manual_df['Latitude'])
+                new_manual_df['Longitude'] = pd.to_numeric(new_manual_df['Longitude'])
+                
+                # --- DÉBUT DES MODIFICATIONS POUR L'ACCUMULATION DES POINTS ---
+                if st.session_state.manual_points_df is not None:
+                    # Si des points existent déjà, on les concatène
+                    st.session_state.manual_points_df = pd.concat([st.session_state.manual_points_df, new_manual_df], ignore_index=True)
+                else:
+                    # Sinon, on initialise avec les nouveaux points
+                    st.session_state.manual_points_df = new_manual_df
+                # --- FIN DES MODIFICATIONS POUR L'ACCUMULATION DES POINTS ---
+
                 st.sidebar.success("Points ajoutés avec succès !")
                 st.rerun() # Re-exécuter pour mettre à jour l'affichage
             except ValueError as ve:
@@ -226,8 +236,9 @@ if st.session_state.df_geocoded is not None:
             except Exception as e:
                 st.sidebar.error(f"Erreur inattendue lors de l'ajout des points manuels : {e}.")
         else:
-            st.session_state.manual_points_df = None
-            st.sidebar.info("Aucun points entré.")
+            # Si l'input est vide et que des points manuels existaient, on ne les touche pas
+            if st.session_state.manual_points_df is None or st.session_state.manual_points_df.empty:
+                st.sidebar.info("Aucun point entré.")
     
     # Afficher et permettre de supprimer les points manuels déjà ajoutés
     if st.session_state.manual_points_df is not None and not st.session_state.manual_points_df.empty:
