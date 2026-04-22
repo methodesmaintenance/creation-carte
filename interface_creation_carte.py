@@ -198,6 +198,8 @@ if st.session_state.df_geocoded is not None:
     st.sidebar.header("➕ Ajouter des points")
     st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude, un point par ligne. Exemple:")
     st.sidebar.code("Agence Jonage,45.777863,5.034605")
+    # Ajout de l'URL pour trouver les coordonnées
+    st.sidebar.markdown("Besoin de trouver des coordonnées GPS ? Vous pouvez utiliser [coordonnees-gps.fr](https://www.coordonnees-gps.fr/)")
     
     manual_points_input = st.sidebar.text_area(
         "Saisissez vos points ici:",
