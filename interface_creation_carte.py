@@ -261,7 +261,7 @@ if st.session_state.df_geocoded is not None:
                 df_ready['cluster'] = kmeans.fit_predict(df_ready[['lat', 'lon']])
 
                 grouped_points = df_ready.groupby(['lat', 'lon', 'cluster']).agg(
-                    names=(col_name, lambda x: '<br>'.join(x.astype(str))), # Concatène les noms
+                    names=(col_name, lambda x: '<br>'.join(x.astype(str).tolist())), # Concatène les noms
                     total_value=(col_value, 'sum'), # Somme des valeurs
                     address=(col_address, 'first') # Prend la première adresse (elles sont toutes les mêmes)
                 ).reset_index()
