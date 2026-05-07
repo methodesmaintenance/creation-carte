@@ -198,12 +198,14 @@ if st.session_state.df_geocoded is not None:
     st.sidebar.header("➕ Ajouter des points")
     st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude")
     st.sidebar.write("un point par ligne. Exemple:")
-    st.sidebar.code("""Agence Lyon,45.777863,5.034605
-    Agence Clermont-Ferrand
-    Agence Creuzier le Neuf
-    Agence Saint-Etienne
-    Agence Grenoble
-    Agence Aix-les-Bains""")
+    st.sidebar.code("""
+    Agence Lyon,45.777863,5.034605
+    Agence Clermont-Ferrand,45.780796,3.2125044
+    Agence Creuzier le Neuf,46.163277,3.411502
+    Agence Saint-Etienne,45.437602,4.331476
+    Agence Grenoble,45.137359,5.706871
+    Agence Aix-les-Bains, 45.697425,5.9274654
+    """)
     # Ajout de l'URL pour trouver les coordonnées
     st.sidebar.markdown("Besoin de trouver des coordonnées GPS ? [coordonnees-gps.fr](https://www.coordonnees-gps.fr/)")
     
