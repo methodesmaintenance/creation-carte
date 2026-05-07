@@ -59,7 +59,7 @@ if uploaded_file is not None:
         st.subheader("Extrait des données")
         st.dataframe(st.session_state.df_original.head(5))
 
-        # 2. Configuration des colonnes (basé sur le DataFrame original)
+        #Configuration des colonnes (basé sur le DataFrame original)
         st.sidebar.header("Configuration des colonnes")
         
         # Pour éviter les erreurs si df_original n'a pas encore été lu
@@ -187,7 +187,7 @@ if st.session_state.df_geocoded is not None:
     # --- FIN DU NOUVEAU BOUTON ---
 
 
-    n_clusters = st.sidebar.slider("Nombre de clusters (K)", 2, 20, 5)
+    n_clusters = st.sidebar.slider("Nombre de clusters (K)", 1, 20, 5)
 
     # Nouvelle option : Afficher les centroïdes
     st.session_state.show_centroids = st.sidebar.checkbox("Afficher les centroïdes des clusters", st.session_state.show_centroids)
@@ -198,7 +198,12 @@ if st.session_state.df_geocoded is not None:
     st.sidebar.header("➕ Ajouter des points")
     st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude")
     st.sidebar.write("un point par ligne. Exemple:")
-    st.sidebar.code("Agence Jonage,45.777863,5.034605")
+    st.sidebar.code("""Agence Lyon,45.777863,5.034605
+    Agence Clermont-Ferrand
+    Agence Creuzier le Neuf
+    Agence Saint-Etienne
+    Agence Grenoble
+    Agence Aix-les-Bains""")
     # Ajout de l'URL pour trouver les coordonnées
     st.sidebar.markdown("Besoin de trouver des coordonnées GPS ? [coordonnees-gps.fr](https://www.coordonnees-gps.fr/)")
     
