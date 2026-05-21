@@ -260,6 +260,12 @@ if st.session_state.df_geocoded is not None:
                 kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10) # Ajout de n_init
                 df_ready['cluster'] = kmeans.fit_predict(df_ready[['lat', 'lon']])
 
+                # Convertit la colonne en numérique. Les valeurs non valides deviendront NaN.
+                df_ready[col_value] = pd.to_numeric(df_ready[col_value], errors='coerce')
+                
+                # Optionnel : si vous voulez remplacer les NaN par 0 avant la somme
+                df_ready[col_value] = df_ready[col_value].fillna(0) 
+
                 grouped_points = df_ready.groupby(['lat', 'lon', 'cluster']).agg(
                     names=(col_name, lambda x: '<br>'.join(x.dropna().astype(str).tolist())), # Concatène les noms
                     total_value=(col_value, 'sum'), # Somme des valeurs
