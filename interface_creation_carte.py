@@ -3,7 +3,8 @@ import folium
 from streamlit.components.v1 import html
 import io
 import unicodedata
-import os # <-- NOUVEAU : Pour vérifier si le fichier cache existe
+import os
+import uuid  # Pour générer un identifiant unique d'application
 
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -14,7 +15,7 @@ from geopy.exc import GeocoderUnavailable, GeocoderTimedOut
 # Configuration de la page
 st.set_page_config(page_title="Générateur de Carte Clustering", layout="wide")
 
-# Fonction pour nettoyer le texte (Majuscules, sans accents, sans espaces superflus)
+# Fonction pour nettoyer le texte
 def clean_text_column(series):
     def clean_value(val):
         if pd.isna(val):
@@ -39,6 +40,12 @@ if 'show_centroids' not in st.session_state:
     st.session_state.show_centroids = True
 if 'manual_points_df' not in st.session_state:
     st.session_state.manual_points_df = None
+# NOUVEAU : Initialisation du journal de diagnostic
+if 'geocoding_debug_logs' not in st.session_state:
+    st.session_state.geocoding_debug_logs = []
+if 'app_instance_id' not in st.session_state:
+    st.session_state.app_instance_id = str(uuid.uuid4())[:8]
+
 if 'agences_df' not in st.session_state:
     st.session_state.agences_df = pd.DataFrame({
         'Name': ['Agence Lyon', 'Agence Clermont-Ferrand', 'Agence Creuzier le Neuf', 
@@ -58,6 +65,7 @@ if uploaded_file is not None:
         st.session_state.df_geocoded = None
         st.session_state.col_config = {}
         st.session_state.manual_points_df = None
+        st.session_state.geocoding_debug_logs = []  # Reset logs au changement de fichier
 
         try:
             if uploaded_file.name.endswith('.csv'):
@@ -105,8 +113,12 @@ if st.session_state.df_original is not None:
     st.info(f"💡 **Note sur l'adresse :** Pour géocoder (= calculer la position sur la carte), il est plus fiable d'utiliser un code postal.")
 
     if st.sidebar.button("⚙️ Lancer le Géocodage"):
-        with st.spinner("Géocodage en cours (utilisation du cache si disponible)..."):
-            geolocator = Nominatim(user_agent="my_clustering_app_v2")
+        with st.spinner("Géocodage en cours (suivez le diagnostic ci-dessous)..."):
+            st.session_state.geocoding_debug_logs = []  # Réinitialiser le journal à chaque clic
+            
+            # Utilisation d'un agent unique contenant l'ID d'instance
+            user_agent_name = f"sectorisation_app_instance_{st.session_state.app_instance_id}"
+            geolocator = Nominatim(user_agent=user_agent_name, timeout=6)
             geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1.5)
 
             def prepare_address_for_geocoding(address):
@@ -129,58 +141,95 @@ if st.session_state.df_original is not None:
             progress_bar = st.progress(0)
             total_addresses_to_geocode = len(unique_addresses_raw)
             
-            # --- GESTION DU CACHE CSV ---
+            # Chargement du cache CSV
             CACHE_FILE = "cache_geocodage.csv"
             cache_dict = {}
-            
-            # 1. Charger le cache s'il existe
             if os.path.exists(CACHE_FILE):
                 try:
                     df_cache = pd.read_csv(CACHE_FILE)
-                    # Création d'un dictionnaire { 'adresse': (lat, lon) }
                     cache_dict = dict(zip(df_cache['Address'], zip(df_cache['Latitude'], df_cache['Longitude'])))
-                except Exception:
-                    pass # Si le fichier est corrompu pour une raison quelconque, on ignore
+                except Exception as e:
+                    st.session_state.geocoding_debug_logs.append({
+                        "Adresse/Événement": "Système de Cache", 
+                        "Statut": "Erreur de lecture", 
+                        "Message de diagnostic": f"Impossible de lire le CSV existant : {e}"
+                    })
+
+            new_cache_entries = []
             
-            new_cache_entries = [] # Liste pour stocker uniquement les NOUVEAUX succès
-            
-            # --- BOUCLE DE GÉOCODAGE ---
+            # Boucle principale de traitement
             for i, addr in enumerate(unique_addresses_raw):
                 prepared_addr = prepare_address_for_geocoding(addr)
                 
-                # Vérification dans le cache
                 if prepared_addr in cache_dict:
-                    location_map[addr] = cache_dict[prepared_addr] # Récupéré en 0 seconde !
+                    # Cas 1 : Trouvé dans le fichier local
+                    location_map[addr] = cache_dict[prepared_addr]
+                    st.session_state.geocoding_debug_logs.append({
+                        "Adresse/Événement": addr, 
+                        "Statut": "🟢 SUCCÈS (CACHE)", 
+                        "Message de diagnostic": f"Trouvé instantanément dans '{CACHE_FILE}'."
+                    })
                 else:
-                    # Non trouvé dans le cache -> Appel à l'API
+                    # Cas 2 : Inconnu -> Appel API Nominatim avec détection précise des bugs Cloud
                     try:
                         loc = geocode(prepared_addr)
                         if loc:
                             location_map[addr] = (loc.latitude, loc.longitude)
-                            # On ajoute aux nouvelles entrées UNIQUEMENT si ça a marché
                             new_cache_entries.append({
                                 'Address': prepared_addr,
                                 'Latitude': loc.latitude,
                                 'Longitude': loc.longitude
                             })
+                            st.session_state.geocoding_debug_logs.append({
+                                "Adresse/Événement": addr, 
+                                "Statut": "🔵 SUCCÈS (API)", 
+                                "Message de diagnostic": f"Géocodé via Nominatim ({loc.latitude}, {loc.longitude})."
+                            })
                         else:
                             geocoding_errors += 1
-                    except Exception:
+                            st.session_state.geocoding_debug_logs.append({
+                                "Adresse/Événement": addr, 
+                                "Statut": "🟠 ADRESSE INTROUVABLE", 
+                                "Message de diagnostic": f"L'API a répondu correctement mais n'a trouvé aucun point pour '{prepared_addr}'."
+                            })
+                    except GeocoderTimedOut as e:
                         geocoding_errors += 1
+                        st.session_state.geocoding_debug_logs.append({
+                            "Adresse/Événement": addr, 
+                            "Statut": "🔴 ERREUR : TIMEOUT", 
+                            "Message de diagnostic": f"Le serveur Cloud a mis trop de temps à répondre. Limite réseau atteinte. Erreur: {e}"
+                        })
+                    except GeocoderUnavailable as e:
+                        geocoding_errors += 1
+                        st.session_state.geocoding_debug_logs.append({
+                            "Adresse/Événement": addr, 
+                            "Statut": "❌ ERREUR : API BLOQUÉE", 
+                            "Message de diagnostic": f"Nominatim rejette la requête. Raison probable : L'adresse IP partagée du serveur Git Cloud est bannie ou saturée. Erreur: {e}"
+                        })
+                    except Exception as e:
+                        geocoding_errors += 1
+                        st.session_state.geocoding_debug_logs.append({
+                            "Adresse/Événement": addr, 
+                            "Statut": "⚠️ ERREUR INCONNUE", 
+                            "Message de diagnostic": f"Type: {type(e).__name__} | Message: {str(e)}"
+                        })
                 
                 progress_bar.progress(min(1.0, (i + 1) / total_addresses_to_geocode))
 
-            # 2. Sauvegarder les nouvelles réussites dans le CSV (sans écraser les anciennes)
+            # Sauvegarde du cache
             if new_cache_entries:
                 df_new_cache = pd.DataFrame(new_cache_entries)
-                if os.path.exists(CACHE_FILE):
-                    # Ajouter à la suite du fichier existant (mode 'a' = append)
-                    df_new_cache.to_csv(CACHE_FILE, mode='a', header=False, index=False)
-                else:
-                    # Créer le fichier avec en-têtes (mode 'w' = write)
-                    df_new_cache.to_csv(CACHE_FILE, mode='w', header=True, index=False)
-
-            # --- FIN GESTION DU CACHE ---
+                try:
+                    if os.path.exists(CACHE_FILE):
+                        df_new_cache.to_csv(CACHE_FILE, mode='a', header=False, index=False)
+                    else:
+                        df_new_cache.to_csv(CACHE_FILE, mode='w', header=True, index=False)
+                except Exception as e:
+                    st.session_state.geocoding_debug_logs.append({
+                        "Adresse/Événement": "Système de Cache", 
+                        "Statut": "Erreur d'écriture", 
+                        "Message de diagnostic": f"Impossible d'écrire dans le fichier CSV : {e}"
+                    })
 
             df_temp['coords'] = df_temp[col_address].map(location_map)
             df_temp = df_temp.dropna(subset=['coords'])
@@ -189,14 +238,24 @@ if st.session_state.df_original is not None:
                 st.error("Aucune adresse n'a pu être localisée.")
                 st.session_state.df_geocoded = None
                 st.stop()
-                
-            if geocoding_errors > 0:
-                st.warning(f"⚠️ {geocoding_errors} adresse(s) n'ont pas pu être trouvées par l'API.")
             
             df_temp[['lat', 'lon']] = pd.DataFrame(df_temp['coords'].tolist(), index=df_temp.index)
             st.session_state.df_geocoded = df_temp.drop(columns=['coords'])
             st.session_state.params = {'name': col_name, 'value': col_value, 'address': col_address}
             st.rerun()
+
+# --- ZONE D'AFFICHAGE DU DIAGNOSTIC ---
+# Cet onglet s'affiche dès qu'il y a des logs (pendant ou après le traitement)
+if st.session_state.geocoding_debug_logs:
+    st.markdown("---")
+    with st.expander("🛠️ Console de Diagnostic - Pourquoi Git bloque-t-il ? (Debug Logs)", expanded=True):
+        st.write(f"**User-Agent configuré pour cette session :** `{f'sectorisation_app_instance_{st.session_state.app_instance_id}'}`")
+        st.write("Consultez le statut de chaque ligne pour comprendre le comportement du serveur distant :")
+        
+        # Transformation des logs en DataFrame pour un affichage propre
+        df_logs = pd.DataFrame(st.session_state.geocoding_debug_logs)
+        st.dataframe(df_logs, use_container_width=True)
+
 
 # --- SECTION CLUSTERING ET CARTE ---
 if st.session_state.df_geocoded is not None:
@@ -224,19 +283,19 @@ if st.session_state.df_geocoded is not None:
     )
 
     if clustering_mode == "Sectorisation intelligente":
-        st.sidebar.caption("💡 **Sectorisation intelligente :** Calcule automatiquement les zones à vol d'oiseau selon le nombre demandé. Ce calcul géométrique ignore la colonne à additionner pour former les groupes.")
+        st.sidebar.caption("💡 **Sectorisation intelligente :** Calcule automatiquement les zones à vol d'oiseau selon le nombre demandé.")
         n_clusters = st.sidebar.slider("Nombre de secteurs souhaités", 1, 20, 5)
         group_column = None
         use_agency_clustering = False
         
     elif clustering_mode == "Regroupement par colonne":
-        st.sidebar.caption("💡 **Regroupement par colonne :** Idéal si vos données contiennent déjà une colonne de répartition (ex: un technicien référent, un secteur existant, ou un commercial dédié).")
+        st.sidebar.caption("💡 **Regroupement par colonne :** Idéal si vos données contiennent déjà une colonne de répartition.")
         group_column = st.sidebar.selectbox("Choisir la colonne de regroupement :", st.session_state.df_original.columns)
         n_clusters = None
         use_agency_clustering = False
         
     elif clustering_mode == "Rattachement à l'agence la plus proche":
-        st.sidebar.caption("💡 **Rattachement à l'agence :** Associe chaque point client à l'agence physique la plus proche à vol d'oiseau, uniquement pour visualiser la proximité géographique sans utiliser d'autres critères.")
+        st.sidebar.caption("💡 **Rattachement à l'agence :** Associe chaque point client à l'agence physique la plus proche à vol d'oiseau.")
         n_clusters = None
         group_column = None
         use_agency_clustering = True
@@ -246,12 +305,6 @@ if st.session_state.df_geocoded is not None:
     # --- SECTION : RECHERCHE DE COORDONNÉES ET AJOUT DE POINTS MANUELS ---
     st.sidebar.markdown("---")
     st.sidebar.header("➕ Ajouter des points")
-    st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude")
-    st.sidebar.write("un point par ligne. Exemple :")
-    st.sidebar.code("Agence Lyon,45.777863,5.034605\nAgence Clermont-Ferrand,45.780796,3.2125044\nAgence Creuzier le Neuf,46.163277,3.411502\nAgence Saint-Etienne,45.437602,4.331476\nAgence Grenoble,45.137359,5.706871\nAgence Aix-les-Bains,45.697425,5.9274654")
-    
-    st.sidebar.markdown("Besoin de trouver des coordonnées GPS ? [coordonnees-gps.fr](https://www.coordonnees-gps.fr/)")
-
     manual_points_input = st.sidebar.text_area("Saisissez vos points ici :", key="manual_points_input")
 
     if st.sidebar.button("➕ Ajouter ces points"):
@@ -277,7 +330,6 @@ if st.session_state.df_geocoded is not None:
         with st.spinner("Calcul des secteurs et génération de la carte..."):
             df_ready[col_value] = pd.to_numeric(df_ready[col_value], errors='coerce').fillna(0)
             
-            # --- CALCULS DES SECTEURS ---
             if clustering_mode == "Sectorisation intelligente":
                 kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
                 df_ready['cluster'] = kmeans.fit_predict(df_ready[['lat', 'lon']])
@@ -294,14 +346,12 @@ if st.session_state.df_geocoded is not None:
                 distances = cdist(points_coords, agency_coords, metric='euclidean')
                 df_ready['cluster'] = distances.argmin(axis=1)
 
-            # Agrégation des points identiques pour éviter les superpositions d'icônes
             grouped_points = df_ready.groupby(['lat', 'lon', 'cluster']).agg(
                 names=(col_name, lambda x: '<br>'.join(x.astype(str))),
                 total_value=(col_value, 'sum'),
                 address=(col_address, 'first')
             ).reset_index()
 
-            # --- CORRECTION DE LA GRAMMAIRE POUR LE LIBELLÉ DE LA BULLE ---
             col_lower = col_value.lower().strip()
             if "heure" in col_lower:
                 label_total = f"Total des {col_value}"
@@ -310,12 +360,10 @@ if st.session_state.df_geocoded is not None:
             else:
                 label_total = f"{col_value} total"
 
-            # --- CRÉATION DE LA CARTE ---
             m = folium.Map(location=[df_ready['lat'].mean(), df_ready['lon'].mean()], zoom_start=6)
             colors = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen',
                       'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black']
 
-            # 1. Dessiner les points clients / adresses
             for idx, row_grouped in grouped_points.iterrows(): 
                 cluster_id = int(row_grouped['cluster'])
                 
@@ -340,13 +388,11 @@ if st.session_state.df_geocoded is not None:
                     icon=folium.Icon(color=colors[cluster_id % len(colors)], icon='info-sign')
                 ).add_to(m)
 
-            # 2. Dessiner les Centres Géographiques / Agences (Si activé)
             if st.session_state.show_centroids:
                 if use_agency_clustering:
                     for idx, row in st.session_state.agences_df.iterrows():
                         total_secteur = df_ready[df_ready['cluster'] == idx][col_value].sum()
                         popup_agency = f"<b>🏢 {row['Name']}</b><br><b>{label_total} secteur:</b> {total_secteur:.2f}"
-                        
                         folium.Marker(
                             location=[row['Latitude'], row['Longitude']],
                             popup=folium.Popup(popup_agency, max_width=250),
@@ -354,30 +400,22 @@ if st.session_state.df_geocoded is not None:
                         ).add_to(m)
                 else:
                     cluster_summary = df_ready.groupby('cluster').agg(
-                        lat_centroid=('lat', 'mean'),
-                        lon_centroid=('lon', 'mean'),
-                        total_value=(col_value, 'sum')
+                        lat_centroid=('lat', 'mean'), lon_centroid=('lon', 'mean'), total_value=(col_value, 'sum')
                     ).reset_index()
-                    
                     for idx, row in cluster_summary.iterrows():
                         c_id = int(row['cluster'])
-                        
                         if clustering_mode == "Regroupement par colonne":
                             reverse_mapping = {v: k for k, v in cluster_mapping.items()}
-                            group_name = reverse_mapping.get(c_id, f"Groupe {c_id}")
-                            lbl = f"Centre Zone : {group_name}"
+                            lbl = f"Centre Zone : {reverse_mapping.get(c_id, f'Groupe {c_id}')}"
                         else:
                             lbl = f"Centre Secteur {c_id + 1}"
-                            
                         popup_centroid = f"<b>⭐ {lbl}</b><br><b>{label_total} Zone:</b> {row['total_value']:.2f}"
-                        
                         folium.Marker(
                             location=[row['lat_centroid'], row['lon_centroid']],
                             popup=folium.Popup(popup_centroid, max_width=250),
                             icon=folium.Icon(color='black', icon='star', prefix='fa')
                         ).add_to(m)
 
-            # 3. Dessiner les points manuels s'il y en a
             if st.session_state.manual_points_df is not None:
                 for idx, row in st.session_state.manual_points_df.iterrows():
                     folium.Marker(
@@ -391,8 +429,5 @@ if st.session_state.df_geocoded is not None:
             html(map_html, height=600)
 
             st.download_button(
-                label="💾 Télécharger la carte (HTML)",
-                data=map_html,
-                file_name="carte_sectorisation.html",
-                mime="text/html"
+                label="💾 Télécharger la carte (HTML)", data=map_html, file_name="carte_sectorisation.html", mime="text/html"
             )
