@@ -12,14 +12,13 @@ from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.exc import GeocoderUnavailable, GeocoderTimedOut
 
-# 🔴 MODIFIEZ CE NOM ICI PAR QUELQUE CHOSE D'UNIQUE (sans accents ni espaces)
-# Si l'application est bloquée à nouveau, changez simplement cette chaîne de caractères.
+# Configuration du nom de l'application (User-Agent) pour l'API
 NOM_USER_AGENT = "generateur_carte_sectorisation_pro_unique_xyz2026"
 
 # Configuration de la page
 st.set_page_config(page_title="Générateur de Carte Clustering", layout="wide")
 
-# Fonction pour nettoyer le texte (Majuscules, sans accents, sans espaces superflus)
+# Fonction pour nettoyer le texte
 def clean_text_column(series):
     def clean_value(val):
         if pd.isna(val):
@@ -117,7 +116,6 @@ if st.session_state.df_original is not None:
         with st.spinner("Géocodage en cours..."):
             st.session_state.geocoding_debug_logs = [] 
             
-            # Application du nouveau nom d'agent utilisateur configuré plus haut
             geolocator = Nominatim(user_agent=NOM_USER_AGENT, timeout=6)
             geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1.5)
 
@@ -141,10 +139,10 @@ if st.session_state.df_original is not None:
             progress_bar = st.progress(0)
             total_addresses_to_geocode = len(unique_addresses_raw)
             
-            # Cache CSV
+            # --- CORRECTIF 1 : Lecture sécurisée du Cache ---
             CACHE_FILE = "cache_geocodage.csv"
             cache_dict = {}
-            if os.path.exists(CACHE_FILE):
+            if os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0: # Vérification de la taille !
                 try:
                     df_cache = pd.read_csv(CACHE_FILE)
                     cache_dict = dict(zip(df_cache['Address'], zip(df_cache['Latitude'], df_cache['Longitude'])))
@@ -165,19 +163,31 @@ if st.session_state.df_original is not None:
                     })
                 else:
                     try:
-                        loc = geocode(prepared_addr)
+                        # --- CORRECTIF 2 : Requête structurée pour le Cloud ---
+                        # On extrait le code postal s'il s'agit d'un nombre pur à 5 chiffres (ex: 69008 ou 69008, France)
+                        clean_zip = prepared_addr.replace(", France", "").strip()
+                        if clean_zip.isdigit() and len(clean_zip) == 5:
+                            # Forçage d'une recherche structurée par dictionnaire (Zéro dépendance à l'IP du serveur)
+                            query_param = {"postalcode": clean_zip, "country": "France"}
+                            log_msg = f"Recherche structurée par Code Postal lancée pour : {clean_zip}"
+                        else:
+                            query_param = prepared_addr
+                            log_msg = "Recherche textuelle classique lancée."
+
+                        loc = geocode(query_param)
+                        
                         if loc:
                             location_map[addr] = (loc.latitude, loc.longitude)
                             new_cache_entries.append({
                                 'Address': prepared_addr, 'Latitude': loc.latitude, 'Longitude': loc.longitude
                             })
                             st.session_state.geocoding_debug_logs.append({
-                                "Adresse/Événement": addr, "Statut": "🔵 API SUCCÈS", "Message": f"Coordonnées trouvées : {loc.latitude}, {loc.longitude}"
+                                "Adresse/Événement": addr, "Statut": "🔵 API SUCCÈS", "Message": f"Coordonnées trouvées : {loc.latitude}, {loc.longitude} ({log_msg})"
                             })
                         else:
                             geocoding_errors += 1
                             st.session_state.geocoding_debug_logs.append({
-                                "Adresse/Événement": addr, "Statut": "🟠 VIDE", "Message": "L'API a répondu mais n'a trouvé aucun emplacement."
+                                "Adresse/Événement": addr, "Statut": "实用 INTROUVABLE", "Message": "L'API a répondu mais n'a pas trouvé cet emplacement sur les index mondiaux."
                             })
                     except GeocoderTimedOut as e:
                         geocoding_errors += 1
@@ -187,7 +197,7 @@ if st.session_state.df_original is not None:
                     except GeocoderUnavailable as e:
                         geocoding_errors += 1
                         st.session_state.geocoding_debug_logs.append({
-                            "Adresse/Événement": addr, "Statut": "❌ REJETÉ", "Message": f"Requête bloquée/refusée par Nominatim. L'IP partagée du serveur Git Cloud est probablement bannie. Détails : {e}"
+                            "Adresse/Événement": addr, "Statut": "❌ REJETÉ", "Message": f"IP Cloud bannie. Détails : {e}"
                         })
                     except Exception as e:
                         geocoding_errors += 1
@@ -197,11 +207,11 @@ if st.session_state.df_original is not None:
                 
                 progress_bar.progress(min(1.0, (i + 1) / total_addresses_to_geocode))
 
-            # Sauvegarde du cache CSV (uniquement les réussites)
+            # Sauvegarde sécurisée du cache CSV
             if new_cache_entries:
                 df_new_cache = pd.DataFrame(new_cache_entries)
                 try:
-                    if os.path.exists(CACHE_FILE):
+                    if os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0:
                         df_new_cache.to_csv(CACHE_FILE, mode='a', header=False, index=False)
                     else:
                         df_new_cache.to_csv(CACHE_FILE, mode='w', header=True, index=False)
@@ -214,7 +224,7 @@ if st.session_state.df_original is not None:
             df_temp = df_temp.dropna(subset=['coords'])
             
             if df_temp.empty:
-                st.error("Aucune adresse n'a pu être localisée. Regardez la console de diagnostic ci-dessous pour en voir la cause exacte.")
+                st.error("Aucune adresse n'a pu être localisée. Regardez la console de diagnostic ci-dessous.")
                 st.session_state.df_geocoded = None
                 st.stop()
             
@@ -226,8 +236,7 @@ if st.session_state.df_original is not None:
 # --- ZONE CONSOLE DE DIAGNOSTIC ---
 if st.session_state.geocoding_debug_logs:
     st.markdown("---")
-    with st.expander("🛠️ Console de Diagnostic Réseau & API", expanded=True):
-        st.write(f"**User-Agent actuellement utilisé :** `{NOM_USER_AGENT}`")
+    with st.expander("🛠 Honoraires de la Console de Diagnostic", expanded=True):
         df_logs = pd.DataFrame(st.session_state.geocoding_debug_logs)
         st.dataframe(df_logs, use_container_width=True)
 
