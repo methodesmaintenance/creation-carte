@@ -268,8 +268,11 @@ if st.session_state.df_geocoded is not None:
     )
 
     if clustering_mode == "Sectorisation intelligente":
+        n_points_disponibles = len(df_ready)
+        n_clusters_ajuste = min(n_clusters, n_points_disponibles)
+        
         st.sidebar.caption("💡 Calcule automatiquement les zones à vol d'oiseau selon le nombre demandé.")
-        n_clusters = st.sidebar.slider("Nombre de secteurs souhaités", 1, 20, 5)
+        n_clusters = st.sidebar.slider("Nombre de secteurs souhaités", 1, n_clusters_ajuste, min(5,n_clusters_ajuste))
         group_column = None
         use_agency_clustering = False
         
