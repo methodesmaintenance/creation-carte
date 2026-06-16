@@ -290,7 +290,14 @@ if st.session_state.df_geocoded is not None:
     # --- SECTION POINTS MANUELS ---
     st.sidebar.markdown("---")
     st.sidebar.header("➕ Ajouter des points")
+    st.sidebar.write("Entrez le Nom, la Latitude, et la Longitude")
+    st.sidebar.write("un point par ligne. Exemple :")
+    st.sidebar.code("Agence Lyon,45.777863,5.034605\nAgence Clermont-Ferrand,45.780796,3.2125044\nAgence Creuzier le Neuf,46.163277,3.411502\nAgence Saint-Etienne,45.437602,4.331476\nAgence Grenoble,45.137359,5.706871\nAgence Aix-les-Bains,45.697425,5.9274654")
+    
+    st.sidebar.markdown("Besoin de trouver des coordonnées GPS ? [coordonnees-gps.fr](https://www.coordonnees-gps.fr/)")
+
     manual_points_input = st.sidebar.text_area("Saisissez vos points ici :", key="manual_points_input")
+
 
     if st.sidebar.button("➕ Ajouter ces points"):
         if manual_points_input:
