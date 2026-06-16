@@ -4,3 +4,4 @@ scikit-learn
 folium
 geopy
 openpyxl
+scipy
