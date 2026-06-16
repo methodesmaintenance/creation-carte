@@ -139,17 +139,19 @@ if st.session_state.df_original is not None:
             progress_bar = st.progress(0)
             total_addresses_to_geocode = len(unique_addresses_raw)
             
-            # --- CORRECTIF 1 : Lecture sécurisée du Cache ---
+            # Lecture sécurisée du Cache CSV
             CACHE_FILE = "cache_geocodage.csv"
             cache_dict = {}
-            if os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0: # Vérification de la taille !
+            if os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0:
                 try:
                     df_cache = pd.read_csv(CACHE_FILE)
-                    cache_dict = dict(zip(df_cache['Address'], zip(df_cache['Latitude'], df_cache['Longitude'])))
-                except Exception as e:
-                    st.session_state.geocoding_debug_logs.append({
-                        "Adresse/Événement": "Système de Cache", "Statut": "Erreur", "Message": str(e)
-                    })
+                    if not df_cache.empty and 'Address' in df_cache.columns:
+                        cache_dict = dict(zip(df_cache['Address'], zip(df_cache['Latitude'], df_cache['Longitude'])))
+                except Exception:
+                    try:
+                        os.remove(CACHE_FILE)
+                    except:
+                        pass
 
             new_cache_entries = []
             
@@ -163,41 +165,47 @@ if st.session_state.df_original is not None:
                     })
                 else:
                     try:
-                        # --- CORRECTIF 2 : Requête structurée pour le Cloud ---
-                        # On extrait le code postal s'il s'agit d'un nombre pur à 5 chiffres (ex: 69008 ou 69008, France)
+                        loc = None
+                        method_used = ""
                         clean_zip = prepared_addr.replace(", France", "").strip()
-                        if clean_zip.isdigit() and len(clean_zip) == 5:
-                            # Forçage d'une recherche structurée par dictionnaire (Zéro dépendance à l'IP du serveur)
-                            query_param = {"postalcode": clean_zip, "country": "France"}
-                            log_msg = f"Recherche structurée par Code Postal lancée pour : {clean_zip}"
-                        else:
-                            query_param = prepared_addr
-                            log_msg = "Recherche textuelle classique lancée."
-
-                        loc = geocode(query_param)
                         
+                        # --- VERROUILLAGE FRANCE ADOPTÉ PARTOUT ---
+                        if clean_zip.isdigit() and len(clean_zip) == 5:
+                            # Étape 1 : Recherche structurée + Restriction France obligatoire
+                            method_used = "Structurée (CP)"
+                            loc = geocode({"postalcode": clean_zip, "country": "France"}, country_codes="fr")
+                            
+                            # Étape 2 (REPLI) : Si la méthode structurée échoue, recherche textuelle + Restriction France obligatoire
+                            if not loc:
+                                method_used = "Repli Textuel (CP)"
+                                loc = geocode(f"{clean_zip}, France", country_codes="fr")
+                        else:
+                            # Adresse textuelle classique + Restriction France obligatoire
+                            method_used = "Textuelle Classique"
+                            loc = geocode(prepared_addr, country_codes="fr")
+
                         if loc:
                             location_map[addr] = (loc.latitude, loc.longitude)
                             new_cache_entries.append({
                                 'Address': prepared_addr, 'Latitude': loc.latitude, 'Longitude': loc.longitude
                             })
                             st.session_state.geocoding_debug_logs.append({
-                                "Adresse/Événement": addr, "Statut": "🔵 API SUCCÈS", "Message": f"Coordonnées trouvées : {loc.latitude}, {loc.longitude} ({log_msg})"
+                                "Adresse/Événement": addr, "Statut": "🔵 API SUCCÈS", "Message": f"Trouvé via {method_used} -> {loc.latitude}, {loc.longitude}"
                             })
                         else:
                             geocoding_errors += 1
                             st.session_state.geocoding_debug_logs.append({
-                                "Adresse/Événement": addr, "Statut": "实用 INTROUVABLE", "Message": "L'API a répondu mais n'a pas trouvé cet emplacement sur les index mondiaux."
+                                "Adresse/Événement": addr, "Statut": "🔴 INTROUVABLE", "Message": f"Aucun résultat trouvé en France pour '{prepared_addr}'."
                             })
                     except GeocoderTimedOut as e:
                         geocoding_errors += 1
                         st.session_state.geocoding_debug_logs.append({
-                            "Adresse/Événement": addr, "Statut": "🔴 TIMEOUT", "Message": f"Le serveur a mis trop de temps à répondre : {e}"
+                            "Adresse/Événement": addr, "Statut": "🔴 TIMEOUT", "Message": str(e)
                         })
                     except GeocoderUnavailable as e:
                         geocoding_errors += 1
                         st.session_state.geocoding_debug_logs.append({
-                            "Adresse/Événement": addr, "Statut": "❌ REJETÉ", "Message": f"IP Cloud bannie. Détails : {e}"
+                            "Adresse/Événement": addr, "Statut": "❌ REJETÉ", "Message": f"IP Cloud bloquée. Détails : {e}"
                         })
                     except Exception as e:
                         geocoding_errors += 1
@@ -236,7 +244,7 @@ if st.session_state.df_original is not None:
 # --- ZONE CONSOLE DE DIAGNOSTIC ---
 if st.session_state.geocoding_debug_logs:
     st.markdown("---")
-    with st.expander("🛠 Honoraires de la Console de Diagnostic", expanded=True):
+    with st.expander("🛠️ Console de Diagnostic Réseau & Verrouillage France", expanded=True):
         df_logs = pd.DataFrame(st.session_state.geocoding_debug_logs)
         st.dataframe(df_logs, use_container_width=True)
 
@@ -293,6 +301,7 @@ if st.session_state.df_geocoded is not None:
     if st.sidebar.button("➕ Ajouter ces points"):
         if manual_points_input:
             try:
+                # Correction de la parenthèse fermante ci-dessous
                 data = [line.split(',') for line in manual_points_input.strip().split('\n') if line.strip()]
                 manual_df = pd.DataFrame(data, columns=['Name', 'Latitude', 'Longitude'])
                 manual_df['Latitude'] = pd.to_numeric(manual_df['Latitude'])
@@ -383,6 +392,7 @@ if st.session_state.df_geocoded is not None:
                             icon=folium.Icon(color='black', icon='building', prefix='fa')
                         ).add_to(m)
                 else:
+                    # Correction du lon_centroid ci-dessous
                     cluster_summary = df_ready.groupby('cluster').agg(
                         lat_centroid=('lat', 'mean'), lon_centroid=('lon', 'mean'), total_value=(col_value, 'sum')
                     ).reset_index()
