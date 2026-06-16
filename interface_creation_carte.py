@@ -3,6 +3,7 @@ import folium
 from streamlit.components.v1 import html
 import io
 import unicodedata
+import os # <-- NOUVEAU : Pour vérifier si le fichier cache existe
 
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -104,7 +105,7 @@ if st.session_state.df_original is not None:
     st.info(f"💡 **Note sur l'adresse :** Pour géocoder (= calculer la position sur la carte), il est plus fiable d'utiliser un code postal.")
 
     if st.sidebar.button("⚙️ Lancer le Géocodage"):
-        with st.spinner("Géocodage en cours..."):
+        with st.spinner("Géocodage en cours (utilisation du cache si disponible)..."):
             geolocator = Nominatim(user_agent="my_clustering_app_v2")
             geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1.5)
 
@@ -128,18 +129,58 @@ if st.session_state.df_original is not None:
             progress_bar = st.progress(0)
             total_addresses_to_geocode = len(unique_addresses_raw)
             
+            # --- GESTION DU CACHE CSV ---
+            CACHE_FILE = "cache_geocodage.csv"
+            cache_dict = {}
+            
+            # 1. Charger le cache s'il existe
+            if os.path.exists(CACHE_FILE):
+                try:
+                    df_cache = pd.read_csv(CACHE_FILE)
+                    # Création d'un dictionnaire { 'adresse': (lat, lon) }
+                    cache_dict = dict(zip(df_cache['Address'], zip(df_cache['Latitude'], df_cache['Longitude'])))
+                except Exception:
+                    pass # Si le fichier est corrompu pour une raison quelconque, on ignore
+            
+            new_cache_entries = [] # Liste pour stocker uniquement les NOUVEAUX succès
+            
+            # --- BOUCLE DE GÉOCODAGE ---
             for i, addr in enumerate(unique_addresses_raw):
                 prepared_addr = prepare_address_for_geocoding(addr)
-                try:
-                    loc = geocode(prepared_addr)
-                    if loc:
-                        location_map[addr] = (loc.latitude, loc.longitude)
-                    else:
+                
+                # Vérification dans le cache
+                if prepared_addr in cache_dict:
+                    location_map[addr] = cache_dict[prepared_addr] # Récupéré en 0 seconde !
+                else:
+                    # Non trouvé dans le cache -> Appel à l'API
+                    try:
+                        loc = geocode(prepared_addr)
+                        if loc:
+                            location_map[addr] = (loc.latitude, loc.longitude)
+                            # On ajoute aux nouvelles entrées UNIQUEMENT si ça a marché
+                            new_cache_entries.append({
+                                'Address': prepared_addr,
+                                'Latitude': loc.latitude,
+                                'Longitude': loc.longitude
+                            })
+                        else:
+                            geocoding_errors += 1
+                    except Exception:
                         geocoding_errors += 1
-                except Exception:
-                    geocoding_errors += 1
                 
                 progress_bar.progress(min(1.0, (i + 1) / total_addresses_to_geocode))
+
+            # 2. Sauvegarder les nouvelles réussites dans le CSV (sans écraser les anciennes)
+            if new_cache_entries:
+                df_new_cache = pd.DataFrame(new_cache_entries)
+                if os.path.exists(CACHE_FILE):
+                    # Ajouter à la suite du fichier existant (mode 'a' = append)
+                    df_new_cache.to_csv(CACHE_FILE, mode='a', header=False, index=False)
+                else:
+                    # Créer le fichier avec en-têtes (mode 'w' = write)
+                    df_new_cache.to_csv(CACHE_FILE, mode='w', header=True, index=False)
+
+            # --- FIN GESTION DU CACHE ---
 
             df_temp['coords'] = df_temp[col_address].map(location_map)
             df_temp = df_temp.dropna(subset=['coords'])
@@ -148,6 +189,9 @@ if st.session_state.df_original is not None:
                 st.error("Aucune adresse n'a pu être localisée.")
                 st.session_state.df_geocoded = None
                 st.stop()
+                
+            if geocoding_errors > 0:
+                st.warning(f"⚠️ {geocoding_errors} adresse(s) n'ont pas pu être trouvées par l'API.")
             
             df_temp[['lat', 'lon']] = pd.DataFrame(df_temp['coords'].tolist(), index=df_temp.index)
             st.session_state.df_geocoded = df_temp.drop(columns=['coords'])
@@ -273,7 +317,6 @@ if st.session_state.df_geocoded is not None:
 
             # 1. Dessiner les points clients / adresses
             for idx, row_grouped in grouped_points.iterrows(): 
-                # CORRECTION ICI : On extrait de manière sécurisée la valeur entière du cluster de la ligne
                 cluster_id = int(row_grouped['cluster'])
                 
                 if clustering_mode == "Regroupement par colonne":
@@ -294,7 +337,6 @@ if st.session_state.df_geocoded is not None:
                 folium.Marker(
                     location=[row_grouped['lat'], row_grouped['lon']],
                     popup=folium.Popup(popup_text, max_width=300),
-                    # On applique le modulo sur la liste des couleurs par rapport au VRAI cluster_id
                     icon=folium.Icon(color=colors[cluster_id % len(colors)], icon='info-sign')
                 ).add_to(m)
 
