@@ -241,12 +241,6 @@ if st.session_state.df_original is not None:
             st.session_state.params = {'name': col_name, 'value': col_value, 'address': col_address}
             st.rerun()
 
-# --- ZONE CONSOLE DE DIAGNOSTIC ---
-if st.session_state.geocoding_debug_logs:
-    st.markdown("---")
-    with st.expander("🛠️ Console de Diagnostic Réseau & Verrouillage France", expanded=True):
-        df_logs = pd.DataFrame(st.session_state.geocoding_debug_logs)
-        st.dataframe(df_logs, use_container_width=True)
 
 # --- SECTION CLUSTERING ET CARTE ---
 if st.session_state.df_geocoded is not None:
