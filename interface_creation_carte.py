@@ -231,7 +231,7 @@ if st.session_state.df_original is not None:
                 st.session_state.df_geocoded = None
                 st.stop()
             
-            df_temp[['lat', 'lon']] = pd.DataFrame(df_temp['coords'].tolist(), index=df_temp.index)
+            df_temp[['latitude', 'longitude']] = pd.DataFrame(df_temp['coords'].tolist(), index=df_temp.index)
             st.session_state.df_geocoded = df_temp.drop(columns=['coords'])
             st.session_state.params = {'name': col_name, 'value': col_value, 'address': col_address}
             st.rerun()
@@ -315,7 +315,7 @@ if st.session_state.df_geocoded is not None:
             # --- CALCULS ---
             if clustering_mode == "Sectorisation intelligente":
                 kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-                df_ready['cluster'] = kmeans.fit_predict(df_ready[['lat', 'lon']])
+                df_ready['cluster'] = kmeans.fit_predict(df_ready[['latitude', 'longitude']])
                 
             elif clustering_mode == "Regroupement par colonne":
                 unique_values = sorted(df_ready[group_column].dropna().unique())
@@ -324,12 +324,12 @@ if st.session_state.df_geocoded is not None:
                 
             elif use_agency_clustering:
                 from scipy.spatial.distance import cdist
-                points_coords = df_ready[['lat', 'lon']].values
+                points_coords = df_ready[['latitude', 'longitude']].values
                 agency_coords = st.session_state.agences_df[['Latitude', 'Longitude']].values
                 distances = cdist(points_coords, agency_coords, metric='euclidean')
                 df_ready['cluster'] = distances.argmin(axis=1)
 
-            grouped_points = df_ready.groupby(['lat', 'lon', 'cluster']).agg(
+            grouped_points = df_ready.groupby(['latitude', 'longitude', 'cluster']).agg(
                 names=(col_name, lambda x: '<br>'.join(x.astype(str))),
                 total_value=(col_value, 'sum'),
                 address=(col_address, 'first')
@@ -343,7 +343,7 @@ if st.session_state.df_geocoded is not None:
             else:
                 label_total = f"{col_value} total"
 
-            m = folium.Map(location=[df_ready['lat'].mean(), df_ready['lon'].mean()], zoom_start=6)
+            m = folium.Map(location=[df_ready['latitude'].mean(), df_ready['longitude'].mean()], zoom_start=6)
             colors = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen',
                       'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black']
 
@@ -366,7 +366,7 @@ if st.session_state.df_geocoded is not None:
                 <b>{label_total}:</b> {row_grouped['total_value']:.2f}
                 """
                 folium.Marker(
-                    location=[row_grouped['lat'], row_grouped['lon']],
+                    location=[row_grouped['latitude'], row_grouped['longitude']],
                     popup=folium.Popup(popup_text, max_width=300),
                     icon=folium.Icon(color=colors[cluster_id % len(colors)], icon='info-sign')
                 ).add_to(m)
@@ -383,7 +383,7 @@ if st.session_state.df_geocoded is not None:
                         ).add_to(m)
                 else:
                     cluster_summary = df_ready.groupby('cluster').agg(
-                        lat_centroid=('lat', 'mean'), lon_centroid=('lon', 'mean'), total_value=(col_value, 'sum')
+                        lat_centroid=('latitude', 'mean'), lon_centroid=('longitude', 'mean'), total_value=(col_value, 'sum')
                     ).reset_index()
                     for idx, row in cluster_summary.iterrows():
                         c_id = int(row['cluster'])
@@ -424,11 +424,11 @@ if st.session_state.df_geocoded is not None:
                 df_ready['Secteur'] = df_ready['cluster'].map(agency_names)
 
             # 2. Filtrage pour n'avoir que les 4 colonnes demandées
-            df_export = df_ready[[col_name, 'lat', 'lon', 'Secteur']].copy()
-            df_export.rename(columns={col_name: 'Identifiant', 'lat': 'Latitude', 'lon': 'Longitude'}, inplace=True)
+            df_export = df_ready[[col_name, 'latitude', 'longitude', 'Secteur']].copy()
+            df_export.rename(columns={col_name: 'ID_Site', 'latitude': 'Latitude', 'longitude': 'Longitude'}, inplace=True)
             
             # Forcer la colonne identifiant à rester une chaîne de caractères
-            df_export['Identifiant'] = df_export['Identifiant'].astype(str)
+            df_export['ID_Site'] = df_export['ID_Site'].astype(str)
 
             col1, col2 = st.columns(2)
             
