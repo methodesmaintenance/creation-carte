@@ -330,7 +330,7 @@ if st.session_state.df_geocoded is not None:
                 df_ready['cluster'] = distances.argmin(axis=1)
 
             grouped_points = df_ready.groupby(['latitude', 'longitude', 'cluster']).agg(
-                names=(col_name, lambda x: '<br>'.join(x.astype(str))),
+                names=(col_name, lambda x: '<br>'.join([str(val) for val in x if pd.notna(val)])),
                 total_value=(col_value, 'sum'),
                 address=(col_address, 'first')
             ).reset_index()
