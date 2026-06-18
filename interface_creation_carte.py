@@ -254,7 +254,7 @@ if st.session_state.df_geocoded is not None:
 
     st.download_button(
         label="⬇️ Télécharger les données géocodées (CSV)",
-        data=st.session_state.df_geocoded.to_csv(index=False).encode('utf-8'),
+        data=st.session_state.df_geocoded.to_csv(index=False, sep=';').encode('utf-8'),
         file_name="donnees_geocodes.csv",
         mime="text/csv"
     )
