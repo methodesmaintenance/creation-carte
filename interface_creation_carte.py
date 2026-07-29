@@ -416,7 +416,7 @@ if st.session_state.df_geocoded is not None:
 
             st.success("Carte générée avec succès !")
             
-            # --- NOUVEAU CODE POUR LE FILTRE TYPE POWER BI SUR LA CARTE ---
+            
             # 1. Préparer les données exactes pour associer les marqueurs Leaflet aux sites
             searchable_points = []
             tous_les_sites_set = set()
@@ -439,69 +439,110 @@ if st.session_state.df_geocoded is not None:
             sites_json = json.dumps(tous_les_sites)
             map_var_name = m.get_name()
 
-            # 2. HTML, CSS et JS du Slicer (Filtre Power BI)
+            # 2. HTML, CSS et JS du Slicer (Filtre Power BI) avec fonction rétractable
             search_html_element = f"""
                 <style>
                     #powerbi-slicer {{
                         position: fixed; 
-                        top: 10px; 
-                        right: 10px; 
+                        top: 15px; 
+                        right: 15px; 
                         z-index: 9999; 
                         background-color: white; 
-                        padding: 15px; 
                         border-radius: 8px; 
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                        width: 280px; 
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                        width: 320px; /* Plus large pour plus de lisibilité */
                         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                        max-height: 75vh; 
                         display: flex; 
                         flex-direction: column;
+                        overflow: hidden; /* Nécessaire pour arrondir les angles du header */
+                    }}
+                    #slicerHeader {{
+                        background-color: #f8f9fa;
+                        padding: 12px 15px;
+                        margin: 0;
+                        font-size: 15px;
+                        font-weight: 600;
+                        color: #333;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        cursor: pointer;
+                        border-bottom: 1px solid #eaeaea;
+                        user-select: none;
+                    }}
+                    #slicerHeader:hover {{
+                        background-color: #e9ecef;
+                    }}
+                    #slicerBody {{
+                        padding: 15px;
+                        display: flex;
+                        flex-direction: column;
+                        max-height: 65vh; /* Limite la hauteur par rapport à l'écran */
                     }}
                     #slicerSearch {{
                         width: 100%; 
-                        padding: 8px; 
-                        margin-bottom: 10px; 
+                        padding: 10px; 
+                        margin-bottom: 12px; 
                         border: 1px solid #ccc;
                         border-radius: 4px;
                         box-sizing: border-box;
+                        font-size: 14px;
                     }}
                     #slicerList {{
                         overflow-y: auto; 
                         flex-grow: 1;
-                        border: 1px solid #eee;
-                        padding: 5px;
+                        border: 1px solid #eaeaea;
+                        padding: 8px;
                         border-radius: 4px;
+                        background-color: #fafafa;
                     }}
                     .slicer-item {{
-                        display: block;
-                        margin-bottom: 6px;
+                        display: flex;
+                        align-items: center;
+                        margin-bottom: 4px;
+                        padding: 6px;
                         cursor: pointer;
-                        font-size: 13px;
-                        color: #333;
+                        font-size: 14px; /* Texte plus grand */
+                        color: #222;
+                        border-radius: 4px;
+                        transition: background-color 0.2s;
                     }}
                     .slicer-item:hover {{
-                        background-color: #f9f9f9;
+                        background-color: #e6f2ff; /* Couleur bleutée au survol */
+                    }}
+                    .slicer-item input[type="checkbox"] {{
+                        margin-right: 12px;
+                        transform: scale(1.3); /* Cases à cocher plus grandes */
+                        cursor: pointer;
                     }}
                     #clearSlicerBtn {{
-                        background-color: #f1f1f1;
-                        border: 1px solid #ccc;
-                        padding: 5px 10px;
+                        background-color: #f1f3f5;
+                        color: #495057;
+                        border: 1px solid #ced4da;
+                        padding: 8px 10px;
                         border-radius: 4px;
                         cursor: pointer;
-                        font-size: 12px;
+                        font-size: 13px;
+                        font-weight: bold;
                         width: 100%;
-                        margin-bottom: 10px;
+                        margin-bottom: 12px;
+                        transition: background-color 0.2s;
                     }}
                     #clearSlicerBtn:hover {{
-                        background-color: #e4e4e4;
+                        background-color: #e2e6ea;
                     }}
                 </style>
 
                 <div id="powerbi-slicer">
-                    <h4 style="margin: 0 0 10px 0; font-size: 15px; color: #333;">🔍 Filtrer les sites</h4>
-                    <input type="text" id="slicerSearch" placeholder="Rechercher un site..." onkeyup="filterSlicer()">
-                    <button id="clearSlicerBtn" onclick="clearSlicer()">Effacer la sélection</button>
-                    <div id="slicerList"></div>
+                    <div id="slicerHeader" onclick="toggleSlicer()">
+                        <span>🔍 Filtrer les sites</span>
+                        <span id="toggleIcon">▼</span>
+                    </div>
+                    <div id="slicerBody">
+                        <input type="text" id="slicerSearch" placeholder="Rechercher un site..." onkeyup="filterSlicer()">
+                        <button id="clearSlicerBtn" onclick="clearSlicer()">Effacer la sélection</button>
+                        <div id="slicerList"></div>
+                    </div>
                 </div>
 
                 <script>
@@ -513,12 +554,25 @@ if st.session_state.df_geocoded is not None:
                     var selectedSites = new Set();
                     var initialBounds = null;
 
+                    // Fonction pour replier/déplier le menu
+                    function toggleSlicer() {{
+                        var body = document.getElementById("slicerBody");
+                        var icon = document.getElementById("toggleIcon");
+                        if (body.style.display === "none") {{
+                            body.style.display = "flex";
+                            icon.innerHTML = "▼";
+                        }} else {{
+                            body.style.display = "none";
+                            icon.innerHTML = "◀";
+                        }}
+                    }}
+
                     // Ignorer les accents lors de la recherche
                     function removeAccents(str) {{
                         return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                     }}
 
-                    // Initialisation : on récupère les marqueurs de la carte une fois qu'elle est chargée
+                    // Initialisation
                     setTimeout(function() {{
                         leafletMap.eachLayer(function(layer) {{
                             if (layer instanceof L.Marker) {{
@@ -526,7 +580,6 @@ if st.session_state.df_geocoded is not None:
                                 var mLng = layer.getLatLng().lng;
                                 var markerSites = [];
                                 
-                                // On associe les sites aux marqueurs Folium selon les coordonnées GPS
                                 pointData.forEach(function(pd) {{
                                     if (Math.abs(pd.lat - mLat) < 0.0001 && Math.abs(pd.lon - mLng) < 0.0001) {{
                                         markerSites = markerSites.concat(pd.sites);
@@ -540,14 +593,13 @@ if st.session_state.df_geocoded is not None:
                             }}
                         }});
                         
-                        // Sauvegarder la vue globale initiale
                         var allLatLngs = allMarkers.map(function(m) {{ return m.layer.getLatLng(); }});
                         if (allLatLngs.length > 0) {{
                             initialBounds = L.latLngBounds(allLatLngs);
                         }}
                         
                         renderCheckboxes();
-                    }}, 1000); // 1 sec d'attente pour être sûr que Folium a dessiné la carte
+                    }}, 1000);
 
                     // Dessiner les cases à cocher
                     function renderCheckboxes() {{
@@ -565,9 +617,7 @@ if st.session_state.df_geocoded is not None:
                                 cb.type = "checkbox";
                                 cb.value = site;
                                 cb.checked = selectedSites.has(site);
-                                cb.style.marginRight = "8px";
                                 
-                                // Ce qui se passe quand on coche/décoche
                                 cb.onchange = function(e) {{
                                     if (e.target.checked) {{
                                         selectedSites.add(site);
@@ -584,12 +634,10 @@ if st.session_state.df_geocoded is not None:
                         }});
                     }}
 
-                    // Filtrer la liste quand on tape dans la barre
                     function filterSlicer() {{
                         renderCheckboxes();
                     }}
 
-                    // Bouton tout effacer
                     function clearSlicer() {{
                         selectedSites.clear();
                         document.getElementById('slicerSearch').value = "";
@@ -597,18 +645,15 @@ if st.session_state.df_geocoded is not None:
                         applyMapFilter();
                     }}
 
-                    // Appliquer le filtre sur la carte Leaflet
                     function applyMapFilter() {{
                         var boundsToZoom = [];
                         
                         allMarkers.forEach(function(item) {{
                             var shouldShow = false;
                             
-                            // S'il n'y a aucun site de sélectionné, on montre tout (comportement par défaut)
                             if (selectedSites.size === 0) {{
                                 shouldShow = true;
                             }} else {{
-                                // Sinon, on vérifie si un des sites liés à ce marqueur est coché
                                 for (var i = 0; i < item.sites.length; i++) {{
                                     if (selectedSites.has(item.sites[i])) {{
                                         shouldShow = true;
@@ -617,12 +662,10 @@ if st.session_state.df_geocoded is not None:
                                 }}
                             }}
                             
-                            // On affiche ou on masque le point
                             if (shouldShow) {{
                                 if (!leafletMap.hasLayer(item.layer)) {{
                                     leafletMap.addLayer(item.layer);
                                 }}
-                                // Si c'est filtré et que c'est bien un de nos sites (exclure les étoiles de centroïdes)
                                 if (selectedSites.size > 0 && item.sites.length > 0) {{
                                     boundsToZoom.push(item.layer.getLatLng());
                                 }}
@@ -633,7 +676,6 @@ if st.session_state.df_geocoded is not None:
                             }}
                         }});
 
-                        // Ajustement de la vue caméra
                         if (selectedSites.size > 0 && boundsToZoom.length > 0) {{
                             leafletMap.fitBounds(L.latLngBounds(boundsToZoom), {{padding: [40, 40], maxZoom: 14}});
                         }} else if (selectedSites.size === 0 && initialBounds) {{
