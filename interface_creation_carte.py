@@ -325,7 +325,11 @@ if st.session_state.df_geocoded is not None:
                 df_ready['cluster'] = kmeans.fit_predict(df_ready[['latitude', 'longitude']])
                 
             elif clustering_mode == "Regroupement par colonne":
-                unique_values = sorted(df_ready[group_column].dropna().unique())
+                # 1. Remplacer les valeurs nulles (NaN) et les cellules vides/espaces par "Non renseigné"
+                df_ready[group_column] = df_ready[group_column].replace(r'^\s*$', 'Non renseigné', regex=True).fillna('Non renseigné')
+                
+                # 2. Récupérer les valeurs uniques (sans le dropna() pour bien conserver le groupe "Non renseigné")
+                unique_values = sorted(df_ready[group_column].unique())
                 cluster_mapping = {val: idx for idx, val in enumerate(unique_values)}
                 df_ready['cluster'] = df_ready[group_column].map(cluster_mapping)
                 
