@@ -728,6 +728,8 @@ if st.session_state.df_geocoded is not None:
 
             col1, col2 = st.columns(2)
             
+            html_complet = m.get_root().render()
+
             with col1:
                 st.download_button(
                     label="⬇️ Télécharger le fichier résultat (CSV)",
@@ -738,7 +740,7 @@ if st.session_state.df_geocoded is not None:
             with col2:
                 st.download_button(
                     label="💾 Télécharger la carte (HTML)", 
-                    data=map_html, 
+                    data=html_complet,  # <-- ON UTILISE LE HTML COMPLET ICI
                     file_name="carte_sectorisation.html", 
                     mime="text/html"
                 )
