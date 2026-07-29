@@ -416,19 +416,21 @@ if st.session_state.df_geocoded is not None:
 
             st.success("Carte générée avec succès !")
             
-            # --- NOUVEAU CODE POUR LA BARRE DE RECHERCHE ---
-            # 1. Collecter les données des points affichés sur la carte pour la recherche
+            # 1. Collecter les données des points
             searchable_points_raw = []
             
             for idx, row_grouped in grouped_points.iterrows():
-                # On prend le premier nom s'il y en a plusieurs
-                name_for_search = str(row_grouped['names']).split('<br>')[0]
+                # CORRECTION : On récupère TOUS les noms du cluster (séparés par <br>)
+                names_in_cluster = str(row_grouped['names']).split('<br>')
                 
-                searchable_points_raw.append({
-                    "name": name_for_search,
-                    "lat": row_grouped['latitude'],
-                    "lon": row_grouped['longitude'],
-                })
+                for name in names_in_cluster:
+                    name = name.strip()
+                    if name:  # Si le nom n'est pas vide
+                        searchable_points_raw.append({
+                            "name": name,
+                            "lat": row_grouped['latitude'],
+                            "lon": row_grouped['longitude'],
+                        })
                 
             # TRI ALPHABÉTIQUE CROISSANT (insensible à la casse)
             searchable_points = sorted(searchable_points_raw, key=lambda x: str(x['name']).lower())
@@ -456,21 +458,21 @@ if st.session_state.df_geocoded is not None:
                     }}
                     /* Style de la liste déroulante avec SCROLL */
                     #customDropdown {{
-                        display: none; /* Caché par défaut */
+                        display: none; 
                         position: absolute;
                         background-color: white;
                         border: 1px solid #ccc;
                         border-radius: 4px;
-                        max-height: 250px; /* HAUTEUR MAXIMALE AVANT SCROLL */
-                        overflow-y: auto;  /* ACTIVE LE SCROLL */
-                        width: 200px;
+                        max-height: 250px; 
+                        overflow-y: auto;  
+                        width: 100%;
+                        box-sizing: border-box;
                         z-index: 10000;
                         padding: 0;
                         margin-top: 5px;
                         list-style-type: none;
                         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
                     }}
-                    /* Style des éléments de la liste */
                     #customDropdown li {{
                         padding: 8px 10px;
                         cursor: pointer;
@@ -484,7 +486,7 @@ if st.session_state.df_geocoded is not None:
                 </style>
 
                 <div id="searchContainer">
-                    <input type="text" id="searchInput" placeholder="Rechercher un site..." oninput="onSearchInput()" onclick="onSearchInput()" style="width: 200px; padding: 5px;">
+                    <input type="text" id="searchInput" placeholder="Rechercher un site..." oninput="onSearchInput()" onclick="onSearchInput()" style="width: 250px; padding: 5px;">
                     <button onclick="clearSearch()" style="padding: 5px 10px; cursor: pointer;">Effacer</button>
                     <ul id="customDropdown"></ul>
                 </div>
@@ -493,46 +495,52 @@ if st.session_state.df_geocoded is not None:
                     var searchablePointsData = {searchable_points_json}; 
                     var mapVar = {map_var_name};
 
+                    // CORRECTION : Fonction pour enlever les accents (facilite la recherche)
+                    function removeAccents(str) {{
+                        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    }}
+
                     // Fonction pour remplir la liste déroulante
                     function populateDropdown(data) {{
                         var ul = document.getElementById("customDropdown");
-                        ul.innerHTML = ""; // On vide la liste
+                        ul.innerHTML = ""; 
                         
                         if (data.length === 0) {{
                             ul.style.display = "none";
                             return;
                         }}
                         
-                        ul.style.display = "block"; // On affiche la liste
+                        ul.style.display = "block"; 
                         
                         data.forEach(function(point) {{
                             var li = document.createElement("li");
                             li.textContent = point.name;
                             
-                            // Action au clic sur un élément de la liste
+                            // Action au clic
                             li.onclick = function() {{
-                                document.getElementById("searchInput").value = point.name; // Remplit la barre
-                                ul.style.display = "none"; // Cache la liste
-                                mapVar.setView([point.lat, point.lon], 14); // Centre la carte
+                                document.getElementById("searchInput").value = point.name; 
+                                ul.style.display = "none"; 
+                                mapVar.setView([point.lat, point.lon], 14); // Centre et zoome la carte
                             }};
                             ul.appendChild(li);
                         }});
                     }}
 
-                    // Fonction appelée à chaque lettre tapée
+                    // Filtre les données selon ce qui est tapé
                     function onSearchInput() {{
-                        var input = document.getElementById('searchInput').value.trim().toUpperCase();
+                        var rawInput = document.getElementById('searchInput').value.trim();
+                        var input = removeAccents(rawInput.toUpperCase());
                         var ul = document.getElementById("customDropdown");
                         
                         if (input === "") {{
                             ul.style.display = "none";
-                            mapVar.setZoom(6);
                             return;
                         }}
 
-                        // Filtre les données selon ce qui est tapé
                         var filteredData = searchablePointsData.filter(function(point) {{
-                            return point.name.toUpperCase().includes(input);
+                            // On enlève les accents du nom de la base de données aussi pour comparer
+                            var normalizedPointName = removeAccents(point.name.toUpperCase());
+                            return normalizedPointName.includes(input);
                         }});
                         
                         populateDropdown(filteredData);
@@ -557,7 +565,6 @@ if st.session_state.df_geocoded is not None:
 
             # 3. Ajouter l'élément HTML/JavaScript à la carte Folium
             m.get_root().html.add_child(folium.Element(search_html_element))
-            # --- FIN DU NOUVEAU CODE ---
 
             map_html = m._repr_html_()
             html(map_html, height=600)
