@@ -419,28 +419,21 @@ if st.session_state.df_geocoded is not None:
             # --- NOUVEAU CODE POUR LA BARRE DE RECHERCHE ---
             # 1. Collecter les données des points affichés sur la carte pour la recherche
             searchable_points = []
+            options_html = ""
+            
             for idx, row_grouped in grouped_points.iterrows():
                 # On prend le premier nom s'il y en a plusieurs, pour la recherche
-                name_for_search = row_grouped['names'].split('<br>')[0] 
+                name_for_search = str(row_grouped['names']).split('<br>')[0]
+                
                 searchable_points.append({
                     "name": name_for_search,
                     "lat": row_grouped['latitude'],
                     "lon": row_grouped['longitude'],
                 })
-
-            # Convertir la liste Python en chaîne JSON pour l'intégrer dans le JavaScript
-            searchable_points_json = json.dumps(searchable_points)
-
-            # 2. HTML et JavaScript pour la barre de recherche
-            searchable_points = []
-            for idx, row_grouped in grouped_points.iterrows():
-                # On prend le premier nom s'il y en a plusieurs, pour la recherche
-                name_for_search = row_grouped['names'].split('<br>')[0] 
-                searchable_points.append({
-                    "name": name_for_search,
-                    "lat": row_grouped['latitude'],
-                    "lon": row_grouped['longitude'],
-                })
+                
+                # Échapper les guillemets pour éviter de casser le HTML
+                safe_name = name_for_search.replace('"', '&quot;')
+                options_html += f'<option value="{safe_name}"></option>\n'
 
             # Convertir la liste Python en chaîne JSON pour l'intégrer dans le JavaScript
             searchable_points_json = json.dumps(searchable_points)
@@ -448,53 +441,46 @@ if st.session_state.df_geocoded is not None:
             # RÉCUPÉRER LE NOM DYNAMIQUE DE LA CARTE FOLIUM
             map_var_name = m.get_name()
 
-            # 2. HTML et JavaScript pour la barre de recherche
+            # 2. HTML et JavaScript pour la barre de recherche avec auto-complétion
             search_html_element = f"""
                 <div style="position:fixed; top:10px; left:50px; z-index:9999; background-color:white; padding:10px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                    <input type="text" id="searchInput" placeholder="Rechercher un site..." onkeyup="filterMapMarkers()">
+                    <!-- L'attribut list="siteOptions" relie l'input à la datalist -->
+                    <input type="text" id="searchInput" list="siteOptions" placeholder="Rechercher un site..." oninput="onSearchInput()" style="width: 200px;">
+                    <datalist id="siteOptions">
+                        {options_html}
+                    </datalist>
                     <button onclick="clearSearch()">Effacer</button>
                 </div>
 
                 <script>
                     var searchablePointsData = {searchable_points_json}; 
 
-                    function filterMapMarkers() {{
+                    function onSearchInput() {{
                         var input = document.getElementById('searchInput');
-                        var filter = input.value.toUpperCase();
+                        var filter = input.value.trim().toUpperCase();
                         
-                        // ON UTILISE LE NOM DYNAMIQUE DE LA CARTE GÉNÉRÉ PAR FOLIUM
                         var leafletMap = {map_var_name}; 
                         
                         if (filter === "") {{
-                            // Réinitialiser le zoom si on efface la recherche
                             leafletMap.setZoom(6);
                             return;
                         }}
 
-                        var found = false;
-                        var targetLat, targetLon;
-
+                        // On vérifie si la saisie correspond EXACTEMENT à l'un des choix de la liste
                         for (var i = 0; i < searchablePointsData.length; i++) {{
                             var point = searchablePointsData[i];
                             
-                            if (point.name.toUpperCase().includes(filter)) {{
-                                targetLat = point.lat;
-                                targetLon = point.lon;
-                                found = true;
-                                break;
+                            if (point.name.toUpperCase() === filter) {{
+                                // Zoom et centrage dès qu'on clique sur un choix ou qu'il est tapé en entier
+                                leafletMap.setView([point.lat, point.lon], 14); 
+                                return; // On sort de la boucle une fois trouvé
                             }}
-                        }}
-
-                        if (found) {{
-                            // Centrer et zoomer sur le point trouvé
-                            leafletMap.setView([targetLat, targetLon], 14); 
                         }}
                     }}
 
                     function clearSearch() {{
                         document.getElementById('searchInput').value = "";
                         var leafletMap = {map_var_name};
-                        // Remettre la vue par défaut
                         leafletMap.setZoom(6);
                     }}
                 </script>
