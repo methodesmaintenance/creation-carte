@@ -155,6 +155,7 @@ if st.session_state.df_original is not None:
             new_cache_entries = []
             
             for i, addr in enumerate(unique_addresses_raw):
+                addr_str = str(addr).strip()
                 prepared_addr = prepare_address_for_geocoding(addr)
                 
                 if addr_str in cache_dict:
