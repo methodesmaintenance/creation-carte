@@ -5,6 +5,7 @@ import io
 import unicodedata
 import os
 import uuid
+import json
 
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -408,6 +409,88 @@ if st.session_state.df_geocoded is not None:
                     ).add_to(m)
 
             st.success("Carte générée avec succès !")
+            
+            # --- NOUVEAU CODE POUR LA BARRE DE RECHERCHE ---
+            # 1. Collecter les données des points affichés sur la carte pour la recherche
+            searchable_points = []
+            for idx, row_grouped in grouped_points.iterrows():
+                # On prend le premier nom s'il y en a plusieurs, pour la recherche
+                name_for_search = row_grouped['names'].split('<br>')[0] 
+                searchable_points.append({
+                    "name": name_for_search,
+                    "lat": row_grouped['latitude'],
+                    "lon": row_grouped['longitude'],
+                })
+
+            # Convertir la liste Python en chaîne JSON pour l'intégrer dans le JavaScript
+            searchable_points_json = json.dumps(searchable_points)
+
+            # 2. HTML et JavaScript pour la barre de recherche
+            search_html_element = f"""
+                <div style="position:fixed; top:10px; left:10px; z-index:9999; background-color:white; padding:10px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    <input type="text" id="searchInput" placeholder="Rechercher un site..." onkeyup="filterMapMarkers()">
+                    <button onclick="clearSearch()">Effacer</button>
+                </div>
+
+                <script>
+                    var searchablePointsData = {searchable_points_json}; // Les données de vos points, injectées ici
+
+                    function filterMapMarkers() {{
+                        var input = document.getElementById('searchInput');
+                        var filter = input.value.toUpperCase();
+                        
+                        if (filter === "") {{
+                            // Si le champ de recherche est vide, on peut réinitialiser la vue de la carte
+                            // Par exemple, en recadrant sur tous les marqueurs actuellement visibles
+                            // C'est un peu plus complexe avec des clusters, mais fitBounds sur l'état actuel est un bon début.
+                            if (window.m && window.m.getBounds) {{
+                                window.m.fitBounds(window.m.getBounds());
+                            }}
+                            return;
+                        }}
+
+                        var found = false;
+                        var targetLat, targetLon;
+
+                        for (var i = 0; i < searchablePointsData.length; i++) {{
+                            var point = searchablePointsData[i];
+                            // Recherche insensible à la casse et partielle
+                            if (point.name.toUpperCase().includes(filter)) {{
+                                targetLat = point.lat;
+                                targetLon = point.lon;
+                                found = true;
+                                break;
+                            }}
+                        }}
+
+                        if (found) {{
+                            // Si un point est trouvé, centrer la carte sur ses coordonnées
+                            // et zoomer à un niveau approprié (ici, zoom 14)
+                            if (window.m && window.m.setView) {{
+                                window.m.setView([targetLat, targetLon], 14); 
+                            }}
+                        }} else {{
+                            console.log("Aucun site trouvé pour : " + input.value);
+                            // Vous pourriez ajouter ici un message à l'utilisateur si aucun résultat n'est trouvé
+                        }}
+                    }}
+
+                    function clearSearch() {{
+                        document.getElementById('searchInput').value = "";
+                        // Réinitialiser la vue de la carte à son état initial ou à une vue globale
+                        if (window.m && window.m.fitBounds) {{
+                            window.m.fitBounds(window.m.getBounds()); // Recadre sur tous les marqueurs
+                            // Ou revenir à la vue initiale si vous l'avez sauvegardée
+                            // window.m.setView([df_ready['latitude'].mean(), df_ready['longitude'].mean()], 6);
+                        }}
+                    }}
+                </script>
+            """
+
+            # 3. Ajouter l'élément HTML/JavaScript à la carte Folium
+            m.get_root().html.add_child(folium.Element(search_html_element))
+            # --- FIN DU NOUVEAU CODE ---
+
             map_html = m._repr_html_()
             html(map_html, height=600)
 
