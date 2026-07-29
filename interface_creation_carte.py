@@ -416,154 +416,233 @@ if st.session_state.df_geocoded is not None:
 
             st.success("Carte générée avec succès !")
             
-            # 1. Collecter les données des points
-            searchable_points_raw = []
+            # --- NOUVEAU CODE POUR LE FILTRE TYPE POWER BI SUR LA CARTE ---
+            # 1. Préparer les données exactes pour associer les marqueurs Leaflet aux sites
+            searchable_points = []
+            tous_les_sites_set = set()
             
             for idx, row_grouped in grouped_points.iterrows():
-                # CORRECTION : On récupère TOUS les noms du cluster (séparés par <br>)
-                names_in_cluster = str(row_grouped['names']).split('<br>')
+                # On sépare les noms s'il y a plusieurs sites sur le même point GPS
+                names = [n.strip() for n in str(row_grouped['names']).split('<br>') if n.strip()]
+                searchable_points.append({
+                    "lat": row_grouped['latitude'],
+                    "lon": row_grouped['longitude'],
+                    "sites": names
+                })
+                tous_les_sites_set.update(names)
                 
-                for name in names_in_cluster:
-                    name = name.strip()
-                    if name:  # Si le nom n'est pas vide
-                        searchable_points_raw.append({
-                            "name": name,
-                            "lat": row_grouped['latitude'],
-                            "lon": row_grouped['longitude'],
-                        })
-                
-            # TRI ALPHABÉTIQUE CROISSANT (insensible à la casse)
-            searchable_points = sorted(searchable_points_raw, key=lambda x: str(x['name']).lower())
+            # Tri alphabétique de tous les sites
+            tous_les_sites = sorted(list(tous_les_sites_set), key=lambda x: str(x).lower())
 
-            # Convertir la liste Python en chaîne JSON
+            # Conversion en JSON pour le JavaScript
             searchable_points_json = json.dumps(searchable_points)
-
-            # RÉCUPÉRER LE NOM DYNAMIQUE DE LA CARTE FOLIUM
+            sites_json = json.dumps(tous_les_sites)
             map_var_name = m.get_name()
 
-            # 2. HTML, CSS et JS pour la barre de recherche personnalisée
+            # 2. HTML, CSS et JS du Slicer (Filtre Power BI)
             search_html_element = f"""
                 <style>
-                    /* Style du conteneur principal */
-                    #searchContainer {{
+                    #powerbi-slicer {{
                         position: fixed; 
                         top: 10px; 
-                        left: 50px; 
+                        right: 10px; 
                         z-index: 9999; 
                         background-color: white; 
-                        padding: 10px; 
-                        border-radius: 5px; 
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                        font-family: sans-serif;
+                        padding: 15px; 
+                        border-radius: 8px; 
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                        width: 280px; 
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                        max-height: 75vh; 
+                        display: flex; 
+                        flex-direction: column;
                     }}
-                    /* Style de la liste déroulante avec SCROLL */
-                    #customDropdown {{
-                        display: none; 
-                        position: absolute;
-                        background-color: white;
+                    #slicerSearch {{
+                        width: 100%; 
+                        padding: 8px; 
+                        margin-bottom: 10px; 
                         border: 1px solid #ccc;
                         border-radius: 4px;
-                        max-height: 250px; 
-                        overflow-y: auto;  
-                        width: 100%;
                         box-sizing: border-box;
-                        z-index: 10000;
-                        padding: 0;
-                        margin-top: 5px;
-                        list-style-type: none;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
                     }}
-                    #customDropdown li {{
-                        padding: 8px 10px;
+                    #slicerList {{
+                        overflow-y: auto; 
+                        flex-grow: 1;
+                        border: 1px solid #eee;
+                        padding: 5px;
+                        border-radius: 4px;
+                    }}
+                    .slicer-item {{
+                        display: block;
+                        margin-bottom: 6px;
                         cursor: pointer;
-                        border-bottom: 1px solid #f1f1f1;
-                        font-size: 14px;
+                        font-size: 13px;
                         color: #333;
                     }}
-                    #customDropdown li:hover {{
-                        background-color: #f0f0f0;
+                    .slicer-item:hover {{
+                        background-color: #f9f9f9;
+                    }}
+                    #clearSlicerBtn {{
+                        background-color: #f1f1f1;
+                        border: 1px solid #ccc;
+                        padding: 5px 10px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        width: 100%;
+                        margin-bottom: 10px;
+                    }}
+                    #clearSlicerBtn:hover {{
+                        background-color: #e4e4e4;
                     }}
                 </style>
 
-                <div id="searchContainer">
-                    <input type="text" id="searchInput" placeholder="Rechercher un site..." oninput="onSearchInput()" onclick="onSearchInput()" style="width: 250px; padding: 5px;">
-                    <button onclick="clearSearch()" style="padding: 5px 10px; cursor: pointer;">Effacer</button>
-                    <ul id="customDropdown"></ul>
+                <div id="powerbi-slicer">
+                    <h4 style="margin: 0 0 10px 0; font-size: 15px; color: #333;">🔍 Filtrer les sites</h4>
+                    <input type="text" id="slicerSearch" placeholder="Rechercher un site..." onkeyup="filterSlicer()">
+                    <button id="clearSlicerBtn" onclick="clearSlicer()">Effacer la sélection</button>
+                    <div id="slicerList"></div>
                 </div>
 
                 <script>
-                    var searchablePointsData = {searchable_points_json}; 
-                    var mapVar = {map_var_name};
+                    var allSites = {sites_json};
+                    var pointData = {searchable_points_json};
+                    var leafletMap = {map_var_name};
+                    
+                    var allMarkers = [];
+                    var selectedSites = new Set();
+                    var initialBounds = null;
 
-                    // CORRECTION : Fonction pour enlever les accents (facilite la recherche)
+                    // Ignorer les accents lors de la recherche
                     function removeAccents(str) {{
                         return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                     }}
 
-                    // Fonction pour remplir la liste déroulante
-                    function populateDropdown(data) {{
-                        var ul = document.getElementById("customDropdown");
-                        ul.innerHTML = ""; 
+                    // Initialisation : on récupère les marqueurs de la carte une fois qu'elle est chargée
+                    setTimeout(function() {{
+                        leafletMap.eachLayer(function(layer) {{
+                            if (layer instanceof L.Marker) {{
+                                var mLat = layer.getLatLng().lat;
+                                var mLng = layer.getLatLng().lng;
+                                var markerSites = [];
+                                
+                                // On associe les sites aux marqueurs Folium selon les coordonnées GPS
+                                pointData.forEach(function(pd) {{
+                                    if (Math.abs(pd.lat - mLat) < 0.0001 && Math.abs(pd.lon - mLng) < 0.0001) {{
+                                        markerSites = markerSites.concat(pd.sites);
+                                    }}
+                                }});
+                                
+                                allMarkers.push({{
+                                    layer: layer,
+                                    sites: markerSites
+                                }});
+                            }}
+                        }});
                         
-                        if (data.length === 0) {{
-                            ul.style.display = "none";
-                            return;
+                        // Sauvegarder la vue globale initiale
+                        var allLatLngs = allMarkers.map(function(m) {{ return m.layer.getLatLng(); }});
+                        if (allLatLngs.length > 0) {{
+                            initialBounds = L.latLngBounds(allLatLngs);
                         }}
                         
-                        ul.style.display = "block"; 
+                        renderCheckboxes();
+                    }}, 1000); // 1 sec d'attente pour être sûr que Folium a dessiné la carte
+
+                    // Dessiner les cases à cocher
+                    function renderCheckboxes() {{
+                        var container = document.getElementById('slicerList');
+                        var filterText = removeAccents(document.getElementById('slicerSearch').value.toUpperCase().trim());
                         
-                        data.forEach(function(point) {{
-                            var li = document.createElement("li");
-                            li.textContent = point.name;
+                        container.innerHTML = "";
+                        
+                        allSites.forEach(function(site) {{
+                            if (removeAccents(site.toUpperCase()).includes(filterText)) {{
+                                var label = document.createElement("label");
+                                label.className = "slicer-item";
+                                
+                                var cb = document.createElement("input");
+                                cb.type = "checkbox";
+                                cb.value = site;
+                                cb.checked = selectedSites.has(site);
+                                cb.style.marginRight = "8px";
+                                
+                                // Ce qui se passe quand on coche/décoche
+                                cb.onchange = function(e) {{
+                                    if (e.target.checked) {{
+                                        selectedSites.add(site);
+                                    }} else {{
+                                        selectedSites.delete(site);
+                                    }}
+                                    applyMapFilter();
+                                }};
+                                
+                                label.appendChild(cb);
+                                label.appendChild(document.createTextNode(site));
+                                container.appendChild(label);
+                            }}
+                        }});
+                    }}
+
+                    // Filtrer la liste quand on tape dans la barre
+                    function filterSlicer() {{
+                        renderCheckboxes();
+                    }}
+
+                    // Bouton tout effacer
+                    function clearSlicer() {{
+                        selectedSites.clear();
+                        document.getElementById('slicerSearch').value = "";
+                        renderCheckboxes();
+                        applyMapFilter();
+                    }}
+
+                    // Appliquer le filtre sur la carte Leaflet
+                    function applyMapFilter() {{
+                        var boundsToZoom = [];
+                        
+                        allMarkers.forEach(function(item) {{
+                            var shouldShow = false;
                             
-                            // Action au clic
-                            li.onclick = function() {{
-                                document.getElementById("searchInput").value = point.name; 
-                                ul.style.display = "none"; 
-                                mapVar.setView([point.lat, point.lon], 14); // Centre et zoome la carte
-                            }};
-                            ul.appendChild(li);
+                            // S'il n'y a aucun site de sélectionné, on montre tout (comportement par défaut)
+                            if (selectedSites.size === 0) {{
+                                shouldShow = true;
+                            }} else {{
+                                // Sinon, on vérifie si un des sites liés à ce marqueur est coché
+                                for (var i = 0; i < item.sites.length; i++) {{
+                                    if (selectedSites.has(item.sites[i])) {{
+                                        shouldShow = true;
+                                        break;
+                                    }}
+                                }}
+                            }}
+                            
+                            // On affiche ou on masque le point
+                            if (shouldShow) {{
+                                if (!leafletMap.hasLayer(item.layer)) {{
+                                    leafletMap.addLayer(item.layer);
+                                }}
+                                // Si c'est filtré et que c'est bien un de nos sites (exclure les étoiles de centroïdes)
+                                if (selectedSites.size > 0 && item.sites.length > 0) {{
+                                    boundsToZoom.push(item.layer.getLatLng());
+                                }}
+                            }} else {{
+                                if (leafletMap.hasLayer(item.layer)) {{
+                                    leafletMap.removeLayer(item.layer);
+                                }}
+                            }}
                         }});
-                    }}
 
-                    // Filtre les données selon ce qui est tapé
-                    function onSearchInput() {{
-                        var rawInput = document.getElementById('searchInput').value.trim();
-                        var input = removeAccents(rawInput.toUpperCase());
-                        var ul = document.getElementById("customDropdown");
-                        
-                        if (input === "") {{
-                            ul.style.display = "none";
-                            return;
+                        // Ajustement de la vue caméra
+                        if (selectedSites.size > 0 && boundsToZoom.length > 0) {{
+                            leafletMap.fitBounds(L.latLngBounds(boundsToZoom), {{padding: [40, 40], maxZoom: 14}});
+                        }} else if (selectedSites.size === 0 && initialBounds) {{
+                            leafletMap.fitBounds(initialBounds, {{padding: [20, 20]}});
                         }}
-
-                        var filteredData = searchablePointsData.filter(function(point) {{
-                            // On enlève les accents du nom de la base de données aussi pour comparer
-                            var normalizedPointName = removeAccents(point.name.toUpperCase());
-                            return normalizedPointName.includes(input);
-                        }});
-                        
-                        populateDropdown(filteredData);
                     }}
-
-                    // Fonction pour le bouton "Effacer"
-                    function clearSearch() {{
-                        document.getElementById('searchInput').value = "";
-                        document.getElementById("customDropdown").style.display = "none";
-                        mapVar.setZoom(6);
-                    }}
-                    
-                    // Cacher la liste si on clique ailleurs sur la carte
-                    document.addEventListener("click", function(event) {{
-                        var container = document.getElementById("searchContainer");
-                        if (!container.contains(event.target)) {{
-                            document.getElementById("customDropdown").style.display = "none";
-                        }}
-                    }});
                 </script>
             """
 
-            # 3. Ajouter l'élément HTML/JavaScript à la carte Folium
             m.get_root().html.add_child(folium.Element(search_html_element))
 
             map_html = m._repr_html_()
