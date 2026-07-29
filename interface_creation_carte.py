@@ -417,6 +417,7 @@ if st.session_state.df_geocoded is not None:
             st.success("Carte générée avec succès !")
             
             
+            # --- NOUVEAU CODE POUR LE FILTRE TYPE POWER BI SUR LA CARTE ---
             # 1. Préparer les données exactes pour associer les marqueurs Leaflet aux sites
             searchable_points = []
             tous_les_sites_set = set()
@@ -450,11 +451,11 @@ if st.session_state.df_geocoded is not None:
                         background-color: white; 
                         border-radius: 8px; 
                         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                        width: 320px; /* Plus large pour plus de lisibilité */
+                        width: 320px;
                         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                         display: flex; 
                         flex-direction: column;
-                        overflow: hidden; /* Nécessaire pour arrondir les angles du header */
+                        overflow: hidden;
                     }}
                     #slicerHeader {{
                         background-color: #f8f9fa;
@@ -477,7 +478,7 @@ if st.session_state.df_geocoded is not None:
                         padding: 15px;
                         display: flex;
                         flex-direction: column;
-                        max-height: 65vh; /* Limite la hauteur par rapport à l'écran */
+                        max-height: 65vh;
                     }}
                     #slicerSearch {{
                         width: 100%; 
@@ -502,17 +503,17 @@ if st.session_state.df_geocoded is not None:
                         margin-bottom: 4px;
                         padding: 6px;
                         cursor: pointer;
-                        font-size: 14px; /* Texte plus grand */
+                        font-size: 14px;
                         color: #222;
                         border-radius: 4px;
                         transition: background-color 0.2s;
                     }}
                     .slicer-item:hover {{
-                        background-color: #e6f2ff; /* Couleur bleutée au survol */
+                        background-color: #e6f2ff;
                     }}
                     .slicer-item input[type="checkbox"] {{
                         margin-right: 12px;
-                        transform: scale(1.3); /* Cases à cocher plus grandes */
+                        transform: scale(1.3);
                         cursor: pointer;
                     }}
                     #clearSlicerBtn {{
@@ -548,11 +549,14 @@ if st.session_state.df_geocoded is not None:
                 <script>
                     var allSites = {sites_json};
                     var pointData = {searchable_points_json};
-                    var leafletMap = {map_var_name};
+                    
+                    // CORRECTION ICI : On passe le nom de la carte en texte pur pour éviter que le navigateur plante si elle n'est pas encore dessinée
+                    var mapVarName = '{map_var_name}'; 
                     
                     var allMarkers = [];
                     var selectedSites = new Set();
                     var initialBounds = null;
+                    var leafletMap = null;
 
                     // Fonction pour replier/déplier le menu
                     function toggleSlicer() {{
@@ -572,36 +576,7 @@ if st.session_state.df_geocoded is not None:
                         return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                     }}
 
-                    // Initialisation
-                    setTimeout(function() {{
-                        leafletMap.eachLayer(function(layer) {{
-                            if (layer instanceof L.Marker) {{
-                                var mLat = layer.getLatLng().lat;
-                                var mLng = layer.getLatLng().lng;
-                                var markerSites = [];
-                                
-                                pointData.forEach(function(pd) {{
-                                    if (Math.abs(pd.lat - mLat) < 0.0001 && Math.abs(pd.lon - mLng) < 0.0001) {{
-                                        markerSites = markerSites.concat(pd.sites);
-                                    }}
-                                }});
-                                
-                                allMarkers.push({{
-                                    layer: layer,
-                                    sites: markerSites
-                                }});
-                            }}
-                        }});
-                        
-                        var allLatLngs = allMarkers.map(function(m) {{ return m.layer.getLatLng(); }});
-                        if (allLatLngs.length > 0) {{
-                            initialBounds = L.latLngBounds(allLatLngs);
-                        }}
-                        
-                        renderCheckboxes();
-                    }}, 1000);
-
-                    // Dessiner les cases à cocher
+                    // On dessine les cases à cocher IMMÉDIATEMENT (plus besoin d'attendre la carte)
                     function renderCheckboxes() {{
                         var container = document.getElementById('slicerList');
                         var filterText = removeAccents(document.getElementById('slicerSearch').value.toUpperCase().trim());
@@ -633,6 +608,9 @@ if st.session_state.df_geocoded is not None:
                             }}
                         }});
                     }}
+                    
+                    // On lance l'affichage visuel tout de suite
+                    renderCheckboxes();
 
                     function filterSlicer() {{
                         renderCheckboxes();
@@ -646,6 +624,8 @@ if st.session_state.df_geocoded is not None:
                     }}
 
                     function applyMapFilter() {{
+                        if (!leafletMap) return; // Sécurité au cas où on clique avant que la carte ne soit chargée
+                        
                         var boundsToZoom = [];
                         
                         allMarkers.forEach(function(item) {{
@@ -682,10 +662,43 @@ if st.session_state.df_geocoded is not None:
                             leafletMap.fitBounds(initialBounds, {{padding: [20, 20]}});
                         }}
                     }}
+
+                    // CONNEXION À LA CARTE : On vérifie toutes les 200ms si la carte Folium a fini de s'afficher
+                    var checkMapInterval = setInterval(function() {{
+                        if (window[mapVarName]) {{
+                            clearInterval(checkMapInterval); // La carte est trouvée, on arrête de chercher
+                            leafletMap = window[mapVarName];
+                            
+                            leafletMap.eachLayer(function(layer) {{
+                                if (layer instanceof L.Marker) {{
+                                    var mLat = layer.getLatLng().lat;
+                                    var mLng = layer.getLatLng().lng;
+                                    var markerSites = [];
+                                    
+                                    pointData.forEach(function(pd) {{
+                                        if (Math.abs(pd.lat - mLat) < 0.0001 && Math.abs(pd.lon - mLng) < 0.0001) {{
+                                            markerSites = markerSites.concat(pd.sites);
+                                        }}
+                                    }});
+                                    
+                                    allMarkers.push({{
+                                        layer: layer,
+                                        sites: markerSites
+                                    }});
+                                }}
+                            }});
+                            
+                            var allLatLngs = allMarkers.map(function(m) {{ return m.layer.getLatLng(); }});
+                            if (allLatLngs.length > 0) {{
+                                initialBounds = L.latLngBounds(allLatLngs);
+                            }}
+                        }}
+                    }}, 200);
                 </script>
             """
 
             m.get_root().html.add_child(folium.Element(search_html_element))
+            # --- FIN DU NOUVEAU CODE ---
 
             map_html = m._repr_html_()
             html(map_html, height=600)
