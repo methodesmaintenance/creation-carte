@@ -418,71 +418,140 @@ if st.session_state.df_geocoded is not None:
             
             # --- NOUVEAU CODE POUR LA BARRE DE RECHERCHE ---
             # 1. Collecter les données des points affichés sur la carte pour la recherche
-            searchable_points = []
-            options_html = ""
+            searchable_points_raw = []
             
             for idx, row_grouped in grouped_points.iterrows():
-                # On prend le premier nom s'il y en a plusieurs, pour la recherche
+                # On prend le premier nom s'il y en a plusieurs
                 name_for_search = str(row_grouped['names']).split('<br>')[0]
                 
-                searchable_points.append({
+                searchable_points_raw.append({
                     "name": name_for_search,
                     "lat": row_grouped['latitude'],
                     "lon": row_grouped['longitude'],
                 })
                 
-                # Échapper les guillemets pour éviter de casser le HTML
-                safe_name = name_for_search.replace('"', '&quot;')
-                options_html += f'<option value="{safe_name}"></option>\n'
+            # TRI ALPHABÉTIQUE CROISSANT (insensible à la casse)
+            searchable_points = sorted(searchable_points_raw, key=lambda x: str(x['name']).lower())
 
-            # Convertir la liste Python en chaîne JSON pour l'intégrer dans le JavaScript
+            # Convertir la liste Python en chaîne JSON
             searchable_points_json = json.dumps(searchable_points)
 
             # RÉCUPÉRER LE NOM DYNAMIQUE DE LA CARTE FOLIUM
             map_var_name = m.get_name()
 
-            # 2. HTML et JavaScript pour la barre de recherche avec auto-complétion
+            # 2. HTML, CSS et JS pour la barre de recherche personnalisée
             search_html_element = f"""
-                <div style="position:fixed; top:10px; left:50px; z-index:9999; background-color:white; padding:10px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                    <!-- L'attribut list="siteOptions" relie l'input à la datalist -->
-                    <input type="text" id="searchInput" list="siteOptions" placeholder="Rechercher un site..." oninput="onSearchInput()" style="width: 200px;">
-                    <datalist id="siteOptions">
-                        {options_html}
-                    </datalist>
-                    <button onclick="clearSearch()">Effacer</button>
+                <style>
+                    /* Style du conteneur principal */
+                    #searchContainer {{
+                        position: fixed; 
+                        top: 10px; 
+                        left: 50px; 
+                        z-index: 9999; 
+                        background-color: white; 
+                        padding: 10px; 
+                        border-radius: 5px; 
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                        font-family: sans-serif;
+                    }}
+                    /* Style de la liste déroulante avec SCROLL */
+                    #customDropdown {{
+                        display: none; /* Caché par défaut */
+                        position: absolute;
+                        background-color: white;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        max-height: 250px; /* HAUTEUR MAXIMALE AVANT SCROLL */
+                        overflow-y: auto;  /* ACTIVE LE SCROLL */
+                        width: 200px;
+                        z-index: 10000;
+                        padding: 0;
+                        margin-top: 5px;
+                        list-style-type: none;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    }}
+                    /* Style des éléments de la liste */
+                    #customDropdown li {{
+                        padding: 8px 10px;
+                        cursor: pointer;
+                        border-bottom: 1px solid #f1f1f1;
+                        font-size: 14px;
+                        color: #333;
+                    }}
+                    #customDropdown li:hover {{
+                        background-color: #f0f0f0;
+                    }}
+                </style>
+
+                <div id="searchContainer">
+                    <input type="text" id="searchInput" placeholder="Rechercher un site..." oninput="onSearchInput()" onclick="onSearchInput()" style="width: 200px; padding: 5px;">
+                    <button onclick="clearSearch()" style="padding: 5px 10px; cursor: pointer;">Effacer</button>
+                    <ul id="customDropdown"></ul>
                 </div>
 
                 <script>
                     var searchablePointsData = {searchable_points_json}; 
+                    var mapVar = {map_var_name};
 
+                    // Fonction pour remplir la liste déroulante
+                    function populateDropdown(data) {{
+                        var ul = document.getElementById("customDropdown");
+                        ul.innerHTML = ""; // On vide la liste
+                        
+                        if (data.length === 0) {{
+                            ul.style.display = "none";
+                            return;
+                        }}
+                        
+                        ul.style.display = "block"; // On affiche la liste
+                        
+                        data.forEach(function(point) {{
+                            var li = document.createElement("li");
+                            li.textContent = point.name;
+                            
+                            // Action au clic sur un élément de la liste
+                            li.onclick = function() {{
+                                document.getElementById("searchInput").value = point.name; // Remplit la barre
+                                ul.style.display = "none"; // Cache la liste
+                                mapVar.setView([point.lat, point.lon], 14); // Centre la carte
+                            }};
+                            ul.appendChild(li);
+                        }});
+                    }}
+
+                    // Fonction appelée à chaque lettre tapée
                     function onSearchInput() {{
-                        var input = document.getElementById('searchInput');
-                        var filter = input.value.trim().toUpperCase();
+                        var input = document.getElementById('searchInput').value.trim().toUpperCase();
+                        var ul = document.getElementById("customDropdown");
                         
-                        var leafletMap = {map_var_name}; 
-                        
-                        if (filter === "") {{
-                            leafletMap.setZoom(6);
+                        if (input === "") {{
+                            ul.style.display = "none";
+                            mapVar.setZoom(6);
                             return;
                         }}
 
-                        // On vérifie si la saisie correspond EXACTEMENT à l'un des choix de la liste
-                        for (var i = 0; i < searchablePointsData.length; i++) {{
-                            var point = searchablePointsData[i];
-                            
-                            if (point.name.toUpperCase() === filter) {{
-                                // Zoom et centrage dès qu'on clique sur un choix ou qu'il est tapé en entier
-                                leafletMap.setView([point.lat, point.lon], 14); 
-                                return; // On sort de la boucle une fois trouvé
-                            }}
-                        }}
+                        // Filtre les données selon ce qui est tapé
+                        var filteredData = searchablePointsData.filter(function(point) {{
+                            return point.name.toUpperCase().includes(input);
+                        }});
+                        
+                        populateDropdown(filteredData);
                     }}
 
+                    // Fonction pour le bouton "Effacer"
                     function clearSearch() {{
                         document.getElementById('searchInput').value = "";
-                        var leafletMap = {map_var_name};
-                        leafletMap.setZoom(6);
+                        document.getElementById("customDropdown").style.display = "none";
+                        mapVar.setZoom(6);
                     }}
+                    
+                    // Cacher la liste si on clique ailleurs sur la carte
+                    document.addEventListener("click", function(event) {{
+                        var container = document.getElementById("searchContainer");
+                        if (!container.contains(event.target)) {{
+                            document.getElementById("customDropdown").style.display = "none";
+                        }}
+                    }});
                 </script>
             """
 
