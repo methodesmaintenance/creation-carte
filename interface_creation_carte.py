@@ -445,13 +445,17 @@ if st.session_state.df_geocoded is not None:
                 <style>
                     #powerbi-slicer {{
                         position: fixed; 
-                        top: 15px; 
-                        right: 15px; 
+                        top: 10px; 
+                        right: 10px; /* Marges réduites pour mobile */
                         z-index: 9999; 
                         background-color: white; 
                         border-radius: 8px; 
                         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                        width: 320px;
+                        
+                        width: 100%; 
+                        max-width: 320px; /* Sur PC : 320px max. Sur tel : 100% de la place disponible */
+                        width: calc(100vw - 40px);
+                        
                         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                         display: flex; 
                         flex-direction: column;
