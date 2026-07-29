@@ -157,10 +157,15 @@ if st.session_state.df_original is not None:
             for i, addr in enumerate(unique_addresses_raw):
                 prepared_addr = prepare_address_for_geocoding(addr)
                 
-                if prepared_addr in cache_dict:
+                if addr_str in cache_dict:
+                    location_map[addr] = cache_dict[addr_str]
+                    st.session_state.geocoding_debug_logs.append({
+                        "Adresse/Événement": addr, "Statut": "🟢 CACHE (Exact)", "Message": "Récupéré du fichier local sans appel API."
+                    })
+                elif prepared_addr in cache_dict:
                     location_map[addr] = cache_dict[prepared_addr]
                     st.session_state.geocoding_debug_logs.append({
-                        "Adresse/Événement": addr, "Statut": "🟢 CACHE", "Message": "Récupéré du fichier local sans appel API."
+                        "Adresse/Événement": addr, "Statut": "🟢 CACHE (Préparé)", "Message": "Récupéré du fichier local sans appel API."
                     })
                 else:
                     try:
