@@ -285,6 +285,35 @@ if st.session_state.df_geocoded is not None:
 
     st.session_state.show_centroids = st.sidebar.checkbox("Afficher les centres géographiques / Agences repères", st.session_state.show_centroids)
 
+
+    # --- NOUVEAU : SECTION PERSONNALISATION DES COULEURS ---
+    st.sidebar.markdown("---")
+    st.sidebar.header("🎨 Personnalisation des couleurs")
+    personnaliser_couleurs = st.sidebar.checkbox("Choisir manuellement les couleurs", False)
+    
+    # Couleurs autorisées par le composant folium.Icon
+    FOLIUM_COLORS = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black']
+    custom_colors = {}
+    
+    if personnaliser_couleurs:
+        st.sidebar.caption("Sélectionnez une couleur pour chaque groupe :")
+        if clustering_mode == "Sectorisation intelligente":
+            for i in range(n_clusters):
+                custom_colors[i] = st.sidebar.selectbox(f"Secteur {i+1}", FOLIUM_COLORS, index=i % len(FOLIUM_COLORS))
+        elif clustering_mode == "Regroupement par colonne":
+            temp_s = df_ready[group_column].replace(r'^\s*$', 'Non renseigné', regex=True).fillna('Non renseigné')
+            unique_vals = sorted(temp_s.unique())
+            for i, val in enumerate(unique_vals):
+                custom_colors[i] = st.sidebar.selectbox(f"Groupe : {val}", FOLIUM_COLORS, index=i % len(FOLIUM_COLORS))
+        elif use_agency_clustering:
+            for i, row in st.session_state.agences_df.iterrows():
+                custom_colors[i] = st.sidebar.selectbox(f"Agence : {row['Name']}", FOLIUM_COLORS, index=i % len(FOLIUM_COLORS))
+                
+    if st.session_state.manual_points_df is not None and not st.session_state.manual_points_df.empty:
+        couleur_points_manuels = st.sidebar.selectbox("Couleur des points ajoutés", FOLIUM_COLORS, index=FOLIUM_COLORS.index('black'))
+    else:
+        couleur_points_manuels = 'black'
+        
     # --- SECTION POINTS MANUELS ---
     st.sidebar.markdown("---")
     st.sidebar.header("➕ Ajouter des points")
