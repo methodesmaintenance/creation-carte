@@ -384,11 +384,14 @@ if st.session_state.df_geocoded is not None:
                 label_total = f"{col_value} total"
 
             m = folium.Map(location=[df_ready['latitude'].mean(), df_ready['longitude'].mean()], zoom_start=6)
-            colors = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen',
-                      'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black']
 
             for idx, row_grouped in grouped_points.iterrows(): 
                 cluster_id = int(row_grouped['cluster'])
+                
+                if personnaliser_couleurs and cluster_id in custom_colors:
+                    marker_color = custom_colors[cluster_id]
+                else:
+                    marker_color = FOLIUM_COLORS[cluster_id % len(FOLIUM_COLORS)]
                 
                 if clustering_mode == "Regroupement par colonne":
                     reverse_mapping = {v: k for k, v in cluster_mapping.items()}
@@ -408,7 +411,7 @@ if st.session_state.df_geocoded is not None:
                 folium.Marker(
                     location=[row_grouped['latitude'], row_grouped['longitude']],
                     popup=folium.Popup(popup_text, max_width=300),
-                    icon=folium.Icon(color=colors[cluster_id % len(colors)], icon='info-sign')
+                    icon=folium.Icon(color=marker_color, icon='info-sign')
                 ).add_to(m)
 
             if st.session_state.show_centroids:
