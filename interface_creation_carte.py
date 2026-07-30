@@ -292,7 +292,7 @@ if st.session_state.df_geocoded is not None:
     personnaliser_couleurs = st.sidebar.checkbox("Choisir manuellement les couleurs", False)
     
     # Couleurs autorisées par le composant folium.Icon
-    FOLIUM_COLORS = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black']
+    FOLIUM_COLORS = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue', 'pink', 'lightblue', 'lightgreen', 'darkpurple', 'gray', 'black', 'lightgray','white']
     custom_colors = {}
     
     if personnaliser_couleurs:
