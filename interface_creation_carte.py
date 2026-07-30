@@ -589,10 +589,7 @@ if st.session_state.df_geocoded is not None:
                 <script>
                     var allSites = {sites_json};
                     var pointData = {searchable_points_json};
-                    
-                    // CORRECTION ICI : On passe le nom de la carte en texte pur pour éviter que le navigateur plante si elle n'est pas encore dessinée
                     var mapVarName = '{map_var_name}'; 
-                    
                     var allMarkers = [];
                     var selectedSites = new Set();
                     var initialBounds = null;
@@ -666,8 +663,6 @@ if st.session_state.df_geocoded is not None:
                     function applyMapFilter() {{
                         if (!leafletMap) return; // Sécurité au cas où on clique avant que la carte ne soit chargée
                         
-                        var boundsToZoom = [];
-                        
                         allMarkers.forEach(function(item) {{
                             var shouldShow = false;
                             
@@ -686,9 +681,7 @@ if st.session_state.df_geocoded is not None:
                                 if (!leafletMap.hasLayer(item.layer)) {{
                                     leafletMap.addLayer(item.layer);
                                 }}
-                                if (selectedSites.size > 0 && item.sites.length > 0) {{
-                                    boundsToZoom.push(item.layer.getLatLng());
-                                }}
+                                
                             }} else {{
                                 if (leafletMap.hasLayer(item.layer)) {{
                                     leafletMap.removeLayer(item.layer);
@@ -696,12 +689,7 @@ if st.session_state.df_geocoded is not None:
                             }}
                         }});
 
-                        if (selectedSites.size > 0 && boundsToZoom.length > 0) {{
-                            leafletMap.fitBounds(L.latLngBounds(boundsToZoom), {{padding: [40, 40], maxZoom: 14}});
-                        }} else if (selectedSites.size === 0 && initialBounds) {{
-                            leafletMap.fitBounds(initialBounds, {{padding: [20, 20]}});
-                        }}
-                    }}
+                        
 
                     // CONNEXION À LA CARTE : On vérifie toutes les 200ms si la carte Folium a fini de s'afficher
                     var checkMapInterval = setInterval(function() {{
