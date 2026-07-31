@@ -482,16 +482,13 @@ if st.session_state.df_geocoded is not None:
                     #powerbi-slicer {{
                         position: fixed; 
                         top: 10px; 
-                        right: 10px; /* Marges réduites pour mobile */
+                        right: 10px;
                         z-index: 9999; 
                         background-color: white; 
                         border-radius: 8px; 
                         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                        
-                        width: 100%; 
-                        max-width: 320px; /* Sur PC : 320px max. Sur tel : 100% de la place disponible */
                         width: calc(100vw - 40px);
-                        
+                        max-width: 320px;
                         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                         display: flex; 
                         flex-direction: column;
@@ -511,9 +508,7 @@ if st.session_state.df_geocoded is not None:
                         border-bottom: 1px solid #eaeaea;
                         user-select: none;
                     }}
-                    #slicerHeader:hover {{
-                        background-color: #e9ecef;
-                    }}
+                    #slicerHeader:hover {{ background-color: #e9ecef; }}
                     #slicerBody {{
                         padding: 15px;
                         display: flex;
@@ -538,40 +533,19 @@ if st.session_state.df_geocoded is not None:
                         background-color: #fafafa;
                     }}
                     .slicer-item {{
-                        display: flex;
-                        align-items: center;
-                        margin-bottom: 4px;
-                        padding: 6px;
-                        cursor: pointer;
-                        font-size: 14px;
-                        color: #222;
-                        border-radius: 4px;
-                        transition: background-color 0.2s;
+                        display: flex; align-items: center; margin-bottom: 4px;
+                        padding: 6px; cursor: pointer; font-size: 14px; color: #222;
+                        border-radius: 4px; transition: background-color 0.2s;
                     }}
-                    .slicer-item:hover {{
-                        background-color: #e6f2ff;
-                    }}
-                    .slicer-item input[type="checkbox"] {{
-                        margin-right: 12px;
-                        transform: scale(1.3);
-                        cursor: pointer;
-                    }}
+                    .slicer-item:hover {{ background-color: #e6f2ff; }}
+                    .slicer-item input[type="checkbox"] {{ margin-right: 12px; transform: scale(1.3); cursor: pointer; }}
                     #clearSlicerBtn {{
-                        background-color: #f1f3f5;
-                        color: #495057;
-                        border: 1px solid #ced4da;
-                        padding: 8px 10px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        font-size: 13px;
-                        font-weight: bold;
-                        width: 100%;
-                        margin-bottom: 12px;
+                        background-color: #f1f3f5; color: #495057; border: 1px solid #ced4da;
+                        padding: 8px 10px; border-radius: 4px; cursor: pointer;
+                        font-size: 13px; font-weight: bold; width: 100%; margin-bottom: 12px;
                         transition: background-color 0.2s;
                     }}
-                    #clearSlicerBtn:hover {{
-                        background-color: #e2e6ea;
-                    }}
+                    #clearSlicerBtn:hover {{ background-color: #e2e6ea; }}
                 </style>
 
                 <div id="powerbi-slicer">
@@ -592,10 +566,8 @@ if st.session_state.df_geocoded is not None:
                     var mapVarName = '{map_var_name}'; 
                     var allMarkers = [];
                     var selectedSites = new Set();
-                    var initialBounds = null;
                     var leafletMap = null;
 
-                    // Fonction pour replier/déplier le menu
                     function toggleSlicer() {{
                         var body = document.getElementById("slicerBody");
                         var icon = document.getElementById("toggleIcon");
@@ -608,20 +580,21 @@ if st.session_state.df_geocoded is not None:
                         }}
                     }}
 
-                    // Ignorer les accents lors de la recherche
+                    // CORRECTION : Échappement correct de \\u pour le regex Python -> JS
                     function removeAccents(str) {{
-                        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                        return str ? String(str).normalize("NFD").replace(/[\\u0300-\\u036f]/g, "") : "";
                     }}
 
-                    // On dessine les cases à cocher IMMÉDIATEMENT (plus besoin d'attendre la carte)
                     function renderCheckboxes() {{
                         var container = document.getElementById('slicerList');
-                        var filterText = removeAccents(document.getElementById('slicerSearch').value.toUpperCase().trim());
-                        
+                        var searchInput = document.getElementById('slicerSearch');
+                        if(!container || !searchInput) return;
+
+                        var filterText = removeAccents(searchInput.value.toUpperCase().trim());
                         container.innerHTML = "";
                         
                         allSites.forEach(function(site) {{
-                            if (removeAccents(site.toUpperCase()).includes(filterText)) {{
+                            if (removeAccents(String(site).toUpperCase()).includes(filterText)) {{
                                 var label = document.createElement("label");
                                 label.className = "slicer-item";
                                 
@@ -646,13 +619,10 @@ if st.session_state.df_geocoded is not None:
                         }});
                     }}
                     
-                    // On lance l'affichage visuel tout de suite
+                    // Lancement immédiat
                     renderCheckboxes();
 
-                    function filterSlicer() {{
-                        renderCheckboxes();
-                    }}
-
+                    function filterSlicer() {{ renderCheckboxes(); }}
                     function clearSlicer() {{
                         selectedSites.clear();
                         document.getElementById('slicerSearch').value = "";
@@ -661,13 +631,11 @@ if st.session_state.df_geocoded is not None:
                     }}
 
                     function applyMapFilter() {{
-                        if (!leafletMap) return; // Sécurité au cas où on clique avant que la carte ne soit chargée
-                        
+                        if (!leafletMap) return;
                         allMarkers.forEach(function(item) {{
                             var shouldShow = false;
-                            
-                            if (selectedSites.size === 0) {{
-                                shouldShow = true;
+                            if (selectedSites.size === 0 || item.sites.length === 0) {{
+                                shouldShow = true; // Montre tout, incluant les marqueurs sans "sites" (agences/centres)
                             }} else {{
                                 for (var i = 0; i < item.sites.length; i++) {{
                                     if (selectedSites.has(item.sites[i])) {{
@@ -678,24 +646,29 @@ if st.session_state.df_geocoded is not None:
                             }}
                             
                             if (shouldShow) {{
-                                if (!leafletMap.hasLayer(item.layer)) {{
-                                    leafletMap.addLayer(item.layer);
-                                }}
-                                
+                                if (!leafletMap.hasLayer(item.layer)) leafletMap.addLayer(item.layer);
                             }} else {{
-                                if (leafletMap.hasLayer(item.layer)) {{
-                                    leafletMap.removeLayer(item.layer);
-                                }}
+                                if (leafletMap.hasLayer(item.layer)) leafletMap.removeLayer(item.layer);
                             }}
                         }});
+                    }}
 
-                        
-
-                    // CONNEXION À LA CARTE : On vérifie toutes les 200ms si la carte Folium a fini de s'afficher
+                    // Méthode plus robuste pour capter la carte Folium (fallback if window[name] fails)
                     var checkMapInterval = setInterval(function() {{
                         if (window[mapVarName]) {{
-                            clearInterval(checkMapInterval); // La carte est trouvée, on arrête de chercher
                             leafletMap = window[mapVarName];
+                        }} else {{
+                            // Chercher une instance L.Map globale si Folium change sa nomenclature
+                            for (var key in window) {{
+                                if (window[key] && window[key]._leaflet_id && typeof window[key].eachLayer === 'function') {{
+                                    leafletMap = window[key];
+                                    break;
+                                }}
+                            }}
+                        }}
+
+                        if (leafletMap) {{
+                            clearInterval(checkMapInterval);
                             
                             leafletMap.eachLayer(function(layer) {{
                                 if (layer instanceof L.Marker) {{
@@ -709,17 +682,9 @@ if st.session_state.df_geocoded is not None:
                                         }}
                                     }});
                                     
-                                    allMarkers.push({{
-                                        layer: layer,
-                                        sites: markerSites
-                                    }});
+                                    allMarkers.push({{ layer: layer, sites: markerSites }});
                                 }}
                             }});
-                            
-                            var allLatLngs = allMarkers.map(function(m) {{ return m.layer.getLatLng(); }});
-                            if (allLatLngs.length > 0) {{
-                                initialBounds = L.latLngBounds(allLatLngs);
-                            }}
                         }}
                     }}, 200);
                 </script>
@@ -728,7 +693,8 @@ if st.session_state.df_geocoded is not None:
             m.get_root().html.add_child(folium.Element(search_html_element))
             # --- FIN DU NOUVEAU CODE ---
 
-            map_html = m._repr_html_()
+            # Utilisation de render() au lieu de _repr_html_() pour Streamlit
+            map_html = m.get_root().render()
             html(map_html, height=600)
 
             # --- EXPORT CSV FILTRÉ ET SÉCURISÉ ---
